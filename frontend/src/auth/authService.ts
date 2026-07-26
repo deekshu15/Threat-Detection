@@ -23,6 +23,10 @@ export const authService = {
   },
 
   async login(email: string, password: string) {
+    // Amplify permits only one locally stored Cognito user at a time. Clear a
+    // stale session left by an earlier browser session before switching users.
+    await signOut();
+
     return signIn({ username: email, password });
   },
 

@@ -15,6 +15,8 @@ import {
 import { MouseEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { authService } from "../auth/authService";
+
 function UserMenu() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const navigate = useNavigate();
@@ -32,10 +34,16 @@ function UserMenu() {
     navigate(path);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     handleClose();
-    window.sessionStorage.clear();
-    navigate("/");
+
+    try {
+      await authService.logout();
+    } finally {
+      // Remove only app session data; Amplify clears its own authentication tokens.
+      window.sessionStorage.clear();
+      navigate("/sign-in", { replace: true });
+    }
   };
 
   return (

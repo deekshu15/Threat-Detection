@@ -1,0 +1,10 @@
+{
+    "timestamp": "2026-07-20T10:30:00Z",
+    "source": "windows",
+    "event_type": 4625,
+    "severity": "High",
+    "mitre": {
+        "technique": "T1110",
+        "tactic": "Credential Access"
+    }
+}

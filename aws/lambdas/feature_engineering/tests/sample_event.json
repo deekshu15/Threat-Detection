@@ -1,0 +1,30 @@
+{
+    "timestamp": "2026-01-15T12:00:00Z",
+    "source": "windows",
+    "event_type": "4625",
+    "hostname": "SERVER-01",
+    "username": "administrator",
+    "ip_address": "192.168.1.100",
+
+    "mitre": {
+        "technique": "T1110",
+        "tactic": "Credential Access"
+    },
+
+    "threat_intelligence": {
+
+        "attack_category": "Credential Attack",
+
+        "asset_type": "Windows Server",
+
+        "asset_criticality": "High",
+
+        "severity": "High",
+
+        "severity_score": 75,
+
+        "risk_weight": 80,
+
+        "known_attack": true
+    }
+}

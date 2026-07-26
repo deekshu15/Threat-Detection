@@ -7,6 +7,7 @@ import StorageRoundedIcon from "@mui/icons-material/StorageRounded";
 import { Box, Button, Chip, Stack, Switch, Typography } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 
+import { authService } from "../../auth/authService";
 import GlassSurface from "../../components/ui/GlassSurface";
 
 type SettingsState = {
@@ -63,9 +64,14 @@ function SettingsPage() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultSettings));
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     window.localStorage.removeItem(STORAGE_KEY);
-    navigate("/");
+
+    try {
+      await authService.logout();
+    } finally {
+      navigate("/sign-in", { replace: true });
+    }
   };
 
   return (

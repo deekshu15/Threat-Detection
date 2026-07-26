@@ -1,0 +1,4 @@
+# Incident Correlation Engine Dependencies
+
+# Uses only the Python standard library.
+# No external packages required.

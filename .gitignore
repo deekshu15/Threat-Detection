@@ -285,3 +285,13 @@ $RECYCLE.BIN/
 ############################
 
 !.gitkeep
+
+# ML training artifacts
+aws/lambdas/ml_engine/training/datasets/processed/
+aws/lambdas/ml_engine/training/saved_models/
+
+# Keep only the production model
+!aws/lambdas/ml_engine/models/
+!aws/lambdas/ml_engine/models/risk_classifier.pkl
+!aws/lambdas/ml_engine/models/label_encoder.pkl
+!aws/lambdas/ml_engine/models/metadata.json

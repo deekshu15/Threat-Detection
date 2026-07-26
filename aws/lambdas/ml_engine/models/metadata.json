@@ -1,0 +1,9 @@
+{
+    "model": "RandomForestClassifier",
+    "features": 29,
+    "n_estimators": 200,
+    "max_depth": 20,
+    "accuracy": 1.0,
+    "training_samples": 10000,
+    "test_samples": 10000
+}
