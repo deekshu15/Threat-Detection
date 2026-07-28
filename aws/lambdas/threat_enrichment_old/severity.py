@@ -11,13 +11,13 @@ Responsibilities:
 
 from typing import Dict
 
-from aws.lambdas.threat_enrichment.config import (
+from aws.lambdas.threat_enrichment_old.config import (
     SEVERITY_SCORES,
     RISK_WEIGHTS,
     DEFAULT_RISK_WEIGHT,
 )
 
-from aws.lambdas.threat_enrichment.constants import (
+from aws.lambdas.threat_enrichment_old.constants import (
     LOW,
     MEDIUM,
     HIGH,

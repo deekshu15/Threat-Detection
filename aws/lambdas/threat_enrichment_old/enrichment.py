@@ -31,13 +31,14 @@ import copy
 import logging
 from typing import Dict, List
 
-from .asset_context import AssetContextEngine
+from .asset_context import AssetContext
 from .cve_lookup import CVELookup
 from .ioc_matcher import IOCMatcher
 from .mitre_enrichment import MITREEnrichment
-from .severity import SeverityEngine
+from .severity import calculate_severity
 from .threat_score import ThreatScoreEngine
 from .validator import validate_event
+from aws.lambdas.threat_enrichment_old import severity
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +70,9 @@ class ThreatEnrichmentPipeline:
 
         self.mitre = MITREEnrichment()
 
-        self.asset = AssetContextEngine()
+        self.asset = AssetContext()
 
-        self.severity = SeverityEngine()
+        self.severity = calculate_severity
 
         self.threat_score = ThreatScoreEngine()
 
@@ -197,30 +198,15 @@ class ThreatEnrichmentPipeline:
                 # ---------------------------------------------
         # Asset Context
         # ---------------------------------------------
-
-        asset = self.asset.enrich(
-            enriched
-        )
+        asset = self.asset.enrich(enriched)
 
         enriched.update({
 
-            "asset_type":
-                asset.asset_type,
+            "asset_type": asset.get("asset_type"),
 
-            "asset_criticality":
-                asset.asset_criticality,
+            "asset_criticality": asset.get("asset_criticality"),
 
-            "asset_owner":
-                asset.asset_owner,
-
-            "business_unit":
-                asset.business_unit,
-
-            "environment":
-                asset.environment,
-
-            "asset_tags":
-                asset.asset_tags,
+            "attack_category": asset.get("attack_category"),
 
         })
 
@@ -228,23 +214,17 @@ class ThreatEnrichmentPipeline:
         # Severity Calculation
         # ---------------------------------------------
 
-        severity = self.severity.calculate(
-            enriched
-        )
+        severity = calculate_severity(enriched)
 
         enriched.update({
 
-            "severity":
-                severity.severity,
+            "severity": severity["severity"],
 
-            "severity_score":
-                severity.severity_score,
+            "severity_score": severity["severity_score"],
 
-            "risk_weight":
-                severity.risk_weight,
+            "risk_weight": severity["risk_weight"],
 
-            "known_attack":
-                severity.known_attack,
+            "known_attack": False,
 
         })
 

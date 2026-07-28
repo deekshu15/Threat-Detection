@@ -17,11 +17,55 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from fastapi import HTTPException
+
+from aws.lambdas.feature_engineering.feature_pipeline import process_event
+from aws.lambdas.ml_engine.predictor import predict
+
+from local_api.services.analysis_service import analysis_service
+from local_api.models.request import ThreatAnalysisRequest
+# --------------------------------------------------
+# Threat Analysis Request Model
+# --------------------------------------------------
+
+class ThreatAnalysisRequest(BaseModel):
+    event_id: str
+    timestamp: str
+
+    src_ip: str
+    dest_ip: str
+
+    protocol: str
+
+    severity: str
+    event_category: str
+
+    asset_criticality: str
+
+    threat_score: float
+    cvss_score: float
+
+    matched_ioc: bool
+
+    mitre_technique_id: str
+    mitre_tactic: str
+
+    user: str
+    host: str
+
+    src_port: int
+    dest_port: int
 
 # ------------------------------------------------------------------
 # Make the real backend code importable
 # ------------------------------------------------------------------
-BACKEND_ROOT = Path(__file__).resolve().parent.parent / "aws" / "lambda" / "normalize_security_logs"
+BACKEND_ROOT = (
+    Path(__file__).resolve().parent.parent
+    / "aws"
+    / "lambdas"
+    / "normalize_security_logs"
+)
 sys.path.append(str(BACKEND_ROOT))
 
 from processors.cve_processor import CVEProcessor  # noqa: E402
@@ -293,3 +337,33 @@ def get_total_event_count():
     """Returns the total number of real events across combined Windows + IDS data."""
     combined = _load_combined_events()
     return {"total": len(combined)}
+
+# --------------------------------------------------
+# Threat Analysis API
+# --------------------------------------------------
+
+@app.post("/api/analyze")
+def analyze(request: ThreatAnalysisRequest):
+
+    result = analysis_service.analyze(
+        request.model_dump()
+    )
+
+    return {
+    "success": True,
+
+    "prediction": result["prediction"],
+
+    "enriched_event": result["enriched_event"],
+
+    "validated_event": result["validated_event"],
+
+    "feature_count": len(result["features"]),
+
+    "vector_length": len(result["vector"]),
+
+    "processing": {
+        "model": "RandomForest-v1"
+    }
+}
+    

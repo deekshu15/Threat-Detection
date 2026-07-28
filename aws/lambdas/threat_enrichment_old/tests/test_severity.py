@@ -4,7 +4,7 @@ Unit Tests for severity.py
 
 import pytest
 
-from aws.lambdas.threat_enrichment.severity import(
+from aws.lambdas.threat_enrichment_old.severity import(
     SeverityCalculator,
     calculate_severity,
 )

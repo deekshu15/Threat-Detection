@@ -11,7 +11,7 @@ Responsibilities:
 
 from typing import Dict
 
-from aws.lambdas.threat_enrichment.config import (
+from aws.lambdas.threat_enrichment_old.config import (
     ASSET_MAPPING,
     ATTACK_CATEGORY_MAPPING,
     DEFAULT_ASSET_TYPE,

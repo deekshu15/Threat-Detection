@@ -1,87 +1,229 @@
 """
-config.py
+Enterprise Threat Enrichment Configuration
 
-Configuration and mapping tables for Threat Enrichment.
+Central configuration used across the Threat Enrichment pipeline.
+
+Author: NextCare AI
+Python: 3.11+
 """
 
-from aws.lambdas.threat_enrichment.constants import *
+from __future__ import annotations
 
-# ==========================================================
-# Severity Score Mapping
-# ==========================================================
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List
+import os
 
-SEVERITY_SCORES = {
-    LOW: 25,
-    MEDIUM: 50,
-    HIGH: 75,
-    CRITICAL: 100,
-}
 
-# ==========================================================
-# Default Risk Weights
-# ==========================================================
+# =============================================================================
+# Project Paths
+# =============================================================================
 
-RISK_WEIGHTS = {
-    LOW: 20,
-    MEDIUM: 50,
-    HIGH: 80,
-    CRITICAL: 100,
-}
+ROOT_DIR = Path(__file__).resolve().parents[3]
 
-# ==========================================================
-# Asset Mapping
-# ==========================================================
+DATASETS_DIR = ROOT_DIR / "datasets"
 
-ASSET_MAPPING = {
-    WINDOWS: {
-        "asset_type": WINDOWS_SERVER,
-        "criticality": HIGH_CRITICALITY,
-    },
+RAW_DATA_DIR = DATASETS_DIR / "raw"
 
-    LINUX: {
-        "asset_type": LINUX_SERVER,
-        "criticality": HIGH_CRITICALITY,
-    },
+PROCESSED_DATA_DIR = DATASETS_DIR / "processed"
 
-    IDS: {
-        "asset_type": NETWORK_SENSOR,
-        "criticality": MEDIUM_CRITICALITY,
-    },
+CACHE_DIR = ROOT_DIR / "cache"
 
-    FIREWALL: {
-        "asset_type": NETWORK_GATEWAY,
-        "criticality": HIGH_CRITICALITY,
-    },
+LOG_DIR = ROOT_DIR / "logs"
 
-    CVE: {
-        "asset_type": APPLICATION_SERVER,
-        "criticality": HIGH_CRITICALITY,
-    },
-}
+MODELS_DIR = ROOT_DIR / "models"
 
-# ==========================================================
-# MITRE Technique Mapping
-# ==========================================================
+TEMP_DIR = ROOT_DIR / "temp"
 
-ATTACK_CATEGORY_MAPPING = {
+REPORTS_DIR = ROOT_DIR / "reports"
 
-    "T1110": CREDENTIAL_ATTACK,
-    "T1059": EXECUTION,
-    "T1087": DISCOVERY,
-    "T1068": PRIVILEGE_ESCALATION,
-    "T1021": LATERAL_MOVEMENT,
-    "T1547": PERSISTENCE,
-    "T1071": COMMAND_AND_CONTROL,
-    "T1562": DEFENSE_EVASION,
-    "T1486": IMPACT,
-    "T1595": RECONNAISSANCE,
-}
 
-# ==========================================================
-# Defaults
-# ==========================================================
+# =============================================================================
+# Dataset Configuration
+# =============================================================================
 
-DEFAULT_ASSET_TYPE = UNKNOWN_ASSET
-DEFAULT_CRITICALITY = MEDIUM_CRITICALITY
-DEFAULT_ATTACK_CATEGORY = UNKNOWN_ATTACK
-DEFAULT_RISK_WEIGHT = 50
+CVE_DATASET = (
+    PROCESSED_DATA_DIR
+    / "cve_reference.parquet"
+)
+
+IOC_DATASET = (
+    RAW_DATA_DIR
+    / "threat_feeds"
+    / "ioc_feed.parquet"
+)
+
+MITRE_DATASET = (
+    PROCESSED_DATA_DIR
+    / "mitre_attack.parquet"
+)
+
+ASSET_DATASET = (
+    PROCESSED_DATA_DIR
+    / "asset_inventory.parquet"
+)
+
+
+# =============================================================================
+# Logging
+# =============================================================================
+
+LOG_LEVEL = os.getenv(
+    "LOG_LEVEL",
+    "INFO"
+)
+
+LOG_FILE = LOG_DIR / "threat_enrichment.log"
+
+
+# =============================================================================
+# Pipeline Configuration
+# =============================================================================
+
+@dataclass(slots=True)
+class PipelineConfig:
+
+    enable_validation: bool = True
+
+    enable_ioc_matching: bool = True
+
+    enable_cve_lookup: bool = True
+
+    enable_mitre_mapping: bool = True
+
+    enable_asset_context: bool = True
+
+    enable_behavior_analysis: bool = True
+
+    enable_threat_scoring: bool = True
+
+    enable_risk_engine: bool = True
+
+    enable_logging: bool = True
+
+    max_parallel_workers: int = 8
+
+    cache_enabled: bool = True
+
+    cache_size: int = 50000
+
+
+# =============================================================================
+# IOC Configuration
+# =============================================================================
+
+@dataclass(slots=True)
+class IOCConfig:
+
+    auto_reload: bool = False
+
+    case_sensitive: bool = False
+
+    enable_ip_matching: bool = True
+
+    enable_domain_matching: bool = True
+
+    enable_url_matching: bool = True
+
+    enable_hash_matching: bool = True
+
+    enable_filename_matching: bool = True
+
+    supported_hashes: List[str] = field(
+        default_factory=lambda: [
+            "md5",
+            "sha1",
+            "sha256"
+        ]
+    )
+
+
+# =============================================================================
+# CVE Configuration
+# =============================================================================
+
+@dataclass(slots=True)
+class CVEConfig:
+
+    minimum_cvss: float = 0.0
+
+    maximum_cvss: float = 10.0
+
+    include_cwe: bool = True
+
+    include_vendor: bool = True
+
+    include_product: bool = True
+
+    include_references: bool = True
+
+
+# =============================================================================
+# MITRE Configuration
+# =============================================================================
+
+@dataclass(slots=True)
+class MITREConfig:
+
+    include_tactics: bool = True
+
+    include_techniques: bool = True
+
+    include_subtechniques: bool = True
+
+    include_detection: bool = True
+
+    include_mitigation: bool = True
+
+
+# =============================================================================
+# Threat Scoring
+# =============================================================================
+
+@dataclass(slots=True)
+class ThreatScoreConfig:
+
+    max_score: int = 100
+
+    ioc_weight: float = 0.30
+
+    cve_weight: float = 0.20
+
+    behavior_weight: float = 0.20
+
+    asset_weight: float = 0.15
+
+    ml_weight: float = 0.15
+
+
+# =============================================================================
+# Asset Configuration
+# =============================================================================
+
+@dataclass(slots=True)
+class AssetConfig:
+
+    default_criticality: str = "MEDIUM"
+
+    internet_facing_multiplier: float = 1.25
+
+    production_multiplier: float = 1.50
+
+    domain_controller_multiplier: float = 2.00
+
+
+# =============================================================================
+# Runtime Configuration
+# =============================================================================
+
+PIPELINE = PipelineConfig()
+
+IOC = IOCConfig()
+
+CVE = CVEConfig()
+
+MITRE = MITREConfig()
+
+THREAT_SCORE = ThreatScoreConfig()
+
+ASSET = AssetConfig()

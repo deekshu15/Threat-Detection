@@ -4,7 +4,7 @@ Unit Tests for enrichment.py
 
 import pytest
 
-from aws.lambdas.threat_enrichment.enrichment import (
+from aws.lambdas.threat_enrichment_old.enrichment import (
     enrich_event,
     ThreatEnrichment,
 )
