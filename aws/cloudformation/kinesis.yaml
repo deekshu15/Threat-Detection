@@ -1,0 +1,294 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Amazon Kinesis infrastructure for the
+  AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+      - test
+      - prod
+
+Resources:
+
+###########################################################################
+# Kinesis Data Stream
+###########################################################################
+
+  ThreatDetectionStream:
+
+    Type: AWS::Kinesis::Stream
+
+    Properties:
+
+      Name:
+
+        Fn::Sub: ThreatDetectionStream-${Environment}
+
+      ShardCount: 1
+
+      RetentionPeriodHours: 24
+
+      StreamEncryption:
+
+        EncryptionType: KMS
+
+        KeyId: alias/aws/kinesis
+
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
+
+
+###########################################################################
+# Firehose Delivery Stream
+###########################################################################
+
+  ThreatDetectionFirehose:
+
+    Type: AWS::KinesisFirehose::DeliveryStream
+
+    Properties:
+
+      DeliveryStreamName:
+
+        Fn::Sub: ThreatDetectionFirehose-${Environment}
+
+      DeliveryStreamType: DirectPut
+
+      S3DestinationConfiguration:
+
+        BucketARN:
+
+          Fn::Sub: arn:aws:s3:::threat-detection-processed-${Environment}-${AWS::AccountId}
+
+        RoleARN:
+
+          Fn::Sub: arn:aws:iam::${AWS::AccountId}:role/ThreatDetectionLambdaRole
+
+        Prefix: firehose/
+
+
+###########################################################################
+# CloudWatch Log Group
+###########################################################################
+
+  KinesisLogGroup:
+
+    Type: AWS::Logs::LogGroup
+
+    Properties:
+
+      LogGroupName:
+
+        Fn::Sub: /aws/kinesis/${Environment}
+
+      RetentionInDays: 30
+
+
+###########################################################################
+# CloudWatch Log Stream
+###########################################################################
+
+  KinesisLogStream:
+
+    Type: AWS::Logs::LogStream
+
+    Properties:
+
+      LogGroupName:
+
+        Ref: KinesisLogGroup
+
+      LogStreamName: ProcessingLogs
+
+###########################################################################
+# Kinesis Analytics Application
+###########################################################################
+
+  ThreatDetectionAnalytics:
+
+    Type: AWS::KinesisAnalyticsV2::Application
+
+    Properties:
+
+      ApplicationName:
+
+        Fn::Sub: ThreatDetectionAnalytics-${Environment}
+
+      RuntimeEnvironment: SQL-1_0
+
+      ServiceExecutionRole:
+
+        Fn::Sub: arn:aws:iam::${AWS::AccountId}:role/ThreatDetectionLambdaRole
+
+      ApplicationConfiguration:
+
+        ApplicationCodeConfiguration:
+
+          CodeContent:
+
+            TextContent: |
+
+              CREATE OR REPLACE STREAM DESTINATION_SQL_STREAM (
+                  eventId VARCHAR(64),
+                  severity VARCHAR(32),
+                  score DOUBLE
+              );
+
+          CodeContentType: PLAINTEXT
+
+        EnvironmentProperties:
+
+          PropertyGroups:
+
+            - PropertyGroupId: ApplicationProperties
+
+              PropertyMap:
+
+                Environment:
+
+                  Ref: Environment
+
+
+###########################################################################
+# CloudWatch Alarm - Incoming Records
+###########################################################################
+
+  IncomingRecordsAlarm:
+
+    Type: AWS::CloudWatch::Alarm
+
+    Properties:
+
+      AlarmName:
+
+        Fn::Sub: KinesisIncomingRecords-${Environment}
+
+      AlarmDescription: Low incoming records
+
+      Namespace: AWS/Kinesis
+
+      MetricName: IncomingRecords
+
+      Dimensions:
+
+        - Name: StreamName
+
+          Value:
+
+            Ref: ThreatDetectionStream
+
+      Statistic: Sum
+
+      Period: 300
+
+      EvaluationPeriods: 1
+
+      Threshold: 1
+
+      ComparisonOperator: LessThanThreshold
+
+      TreatMissingData: notBreaching
+
+
+###########################################################################
+# CloudWatch Alarm - Write Provisioning
+###########################################################################
+
+  WriteProvisionedAlarm:
+
+    Type: AWS::CloudWatch::Alarm
+
+    Properties:
+
+      AlarmName:
+
+        Fn::Sub: KinesisWriteProvisioned-${Environment}
+
+      Namespace: AWS/Kinesis
+
+      MetricName: WriteProvisionedThroughputExceeded
+
+      Dimensions:
+
+        - Name: StreamName
+
+          Value:
+
+            Ref: ThreatDetectionStream
+
+      Statistic: Sum
+
+      Period: 300
+
+      EvaluationPeriods: 1
+
+      Threshold: 1
+
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+      TreatMissingData: notBreaching
+
+
+###########################################################################
+# Outputs
+###########################################################################
+
+Outputs:
+
+  KinesisStreamName:
+
+    Description: Kinesis Data Stream
+
+    Value:
+
+      Ref: ThreatDetectionStream
+
+
+  KinesisStreamArn:
+
+    Description: Kinesis Stream ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ThreatDetectionStream
+
+        - Arn
+
+
+  FirehoseName:
+
+    Description: Firehose Delivery Stream
+
+    Value:
+
+      Ref: ThreatDetectionFirehose
+
+
+  AnalyticsApplication:
+
+    Description: Analytics Application
+
+    Value:
+
+      Ref: ThreatDetectionAnalytics

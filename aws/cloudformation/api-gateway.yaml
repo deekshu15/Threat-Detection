@@ -1,0 +1,291 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Amazon API Gateway infrastructure for the
+  AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+      - test
+      - prod
+
+  ThreatEnrichmentLambdaArn:
+
+    Type: String
+
+Resources:
+
+###########################################################################
+# REST API
+###########################################################################
+
+  ThreatDetectionApi:
+
+    Type: AWS::ApiGateway::RestApi
+
+    Properties:
+
+      Name:
+
+        Fn::Sub: ThreatDetectionApi-${Environment}
+
+      Description: AI-Assisted Threat Detection API
+
+      EndpointConfiguration:
+
+        Types:
+
+          - REGIONAL
+
+
+###########################################################################
+# Threat Resource
+###########################################################################
+
+  ThreatResource:
+
+    Type: AWS::ApiGateway::Resource
+
+    Properties:
+
+      ParentId:
+
+        Fn::GetAtt:
+
+          - ThreatDetectionApi
+
+          - RootResourceId
+
+      PathPart: threat
+
+      RestApiId:
+
+        Ref: ThreatDetectionApi
+
+
+###########################################################################
+# POST Method
+###########################################################################
+
+  ThreatPostMethod:
+
+    Type: AWS::ApiGateway::Method
+
+    Properties:
+
+      RestApiId:
+
+        Ref: ThreatDetectionApi
+
+      ResourceId:
+
+        Ref: ThreatResource
+
+      HttpMethod: POST
+
+      AuthorizationType: NONE
+
+      Integration:
+
+        Type: AWS_PROXY
+
+        IntegrationHttpMethod: POST
+
+        Uri:
+
+          Fn::Sub:
+
+            - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+
+            - LambdaArn:
+
+                Ref: ThreatEnrichmentLambdaArn
+
+      MethodResponses:
+
+        - StatusCode: 200
+
+
+###########################################################################
+# Lambda Permission
+###########################################################################
+
+  ApiGatewayInvokePermission:
+
+    Type: AWS::Lambda::Permission
+
+    Properties:
+
+      Action: lambda:InvokeFunction
+
+      FunctionName:
+
+        Ref: ThreatEnrichmentLambdaArn
+
+      Principal: apigateway.amazonaws.com
+
+###########################################################################
+# API Deployment
+###########################################################################
+
+  ApiDeployment:
+
+    Type: AWS::ApiGateway::Deployment
+
+    DependsOn:
+
+      - ThreatPostMethod
+
+    Properties:
+
+      RestApiId:
+
+        Ref: ThreatDetectionApi
+
+      Description: Initial deployment
+
+
+###########################################################################
+# Production Stage
+###########################################################################
+
+  ProductionStage:
+
+    Type: AWS::ApiGateway::Stage
+
+    Properties:
+
+      StageName: prod
+
+      Description: Production Stage
+
+      RestApiId:
+
+        Ref: ThreatDetectionApi
+
+      DeploymentId:
+
+        Ref: ApiDeployment
+
+      MethodSettings:
+
+        - ResourcePath: "/*"
+
+          HttpMethod: "*"
+
+          MetricsEnabled: true
+
+          LoggingLevel: INFO
+
+          DataTraceEnabled: true
+
+          CachingEnabled: false
+
+
+###########################################################################
+# CloudWatch Role
+###########################################################################
+
+  ApiGatewayCloudWatchRole:
+
+    Type: AWS::IAM::Role
+
+    Properties:
+
+      AssumeRolePolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Principal:
+
+              Service:
+
+                - apigateway.amazonaws.com
+
+            Action:
+
+              - sts:AssumeRole
+
+      ManagedPolicyArns:
+
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+
+###########################################################################
+# API Account
+###########################################################################
+
+  ApiGatewayAccount:
+
+    Type: AWS::ApiGateway::Account
+
+    Properties:
+
+      CloudWatchRoleArn:
+
+        Fn::GetAtt:
+
+          - ApiGatewayCloudWatchRole
+
+          - Arn
+
+
+###########################################################################
+# Outputs
+###########################################################################
+
+Outputs:
+
+  RestApiId:
+
+    Description: REST API ID
+
+    Value:
+
+      Ref: ThreatDetectionApi
+
+
+  RestApiRootResourceId:
+
+    Description: Root Resource ID
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ThreatDetectionApi
+
+        - RootResourceId
+
+
+  ProductionStageName:
+
+    Description: API Stage
+
+    Value:
+
+      Ref: ProductionStage
+
+
+  ApiEndpoint:
+
+    Description: Invoke URL
+
+    Value:
+
+      Fn::Sub:
+
+        https://${ThreatDetectionApi}.execute-api.${AWS::Region}.amazonaws.com/prod/threat

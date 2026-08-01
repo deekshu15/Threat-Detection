@@ -1,0 +1,297 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Master CloudFormation stack for the
+  AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+      - test
+      - prod
+
+  LambdaCodeBucket:
+
+    Type: String
+
+  AlertEmail:
+
+    Type: String
+
+  AlertPhoneNumber:
+
+    Type: String
+
+    Default: ""
+
+  AwsAccountId:
+
+    Type: String
+
+  QuickSightUser:
+
+    Type: String
+
+Resources:
+
+###########################################################################
+# Networking
+###########################################################################
+
+  NetworkingStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    Properties:
+
+      TemplateURL: networking.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+
+###########################################################################
+# IAM
+###########################################################################
+
+  IAMStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - NetworkingStack
+
+    Properties:
+
+      TemplateURL: iam.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+
+###########################################################################
+# S3
+###########################################################################
+
+  S3Stack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - IAMStack
+
+    Properties:
+
+      TemplateURL: s3.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+
+###########################################################################
+# DynamoDB
+###########################################################################
+
+  DynamoDBStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - IAMStack
+
+    Properties:
+
+      TemplateURL: dynamodb.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+
+###########################################################################
+# Lambda
+###########################################################################
+
+  LambdaStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - IAMStack
+      - S3Stack
+      - DynamoDBStack
+
+    Properties:
+
+      TemplateURL: lambda.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+        LambdaExecutionRoleArn:
+
+          Fn::GetAtt:
+
+            - IAMStack
+
+            - Outputs.LambdaExecutionRoleArn
+
+
+###########################################################################
+# API Gateway
+###########################################################################
+
+  ApiGatewayStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - LambdaStack
+
+    Properties:
+
+      TemplateURL: api-gateway.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+        ThreatEnrichmentLambdaArn:
+
+          Fn::GetAtt:
+
+            - LambdaStack
+
+            - Outputs.ThreatEnrichmentArn
+
+
+###########################################################################
+# SNS
+###########################################################################
+
+  SNSStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - LambdaStack
+
+    Properties:
+
+      TemplateURL: sns.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+        AlertEmail:
+
+          Ref: AlertEmail
+
+        AlertPhoneNumber:
+
+          Ref: AlertPhoneNumber
+
+
+###########################################################################
+# Kinesis
+###########################################################################
+
+  KinesisStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - S3Stack
+
+    Properties:
+
+      TemplateURL: kinesis.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+
+###########################################################################
+# QuickSight
+###########################################################################
+
+  QuickSightStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - S3Stack
+
+    Properties:
+
+      TemplateURL: quicksight.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+        AwsAccountId:
+
+          Ref: AwsAccountId
+
+        QuickSightUser:
+
+          Ref: QuickSightUser
+
+
+###########################################################################
+# Cognito
+###########################################################################
+
+  CognitoStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - IAMStack
+
+    Properties:
+
+      TemplateURL: cognito-user-pool.yaml
+

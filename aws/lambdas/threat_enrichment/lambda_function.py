@@ -28,20 +28,20 @@ from datetime import datetime
 
 from logger import get_logger
 
-from validators.validator_factory import ValidatorFactory
+from aws.validators.validator_factory import ValidatorFactory
 
-from validators.event_validator import EventValidator
+from aws.validators.event_validator import EventValidator
 
-from services.ioc_service import IOCService
-from services.cve_service import CVEService
-from services.mitre_service import MITREService
-from services.asset_service import AssetService
-from services.behavior_service import BehaviorService
-from services.threat_score_service import ThreatScoreService
-from services.enrichment_pipeline import EnrichmentPipeline
-from services.cache_service import CacheService
+from aws.services.ioc_service import IOCService
+from aws.services.cve_service import CVEService
+from aws.services.mitre_service import MITREService
+from aws.services.asset_service import AssetService
+from aws.services.behavior_service import BehaviorService
+from aws.services.threat_score_service import ThreatScoreService
+from aws.services.enrichment_pipeline import EnrichmentPipeline
+from aws.services.cache_service import CacheService
 
-from models.event import ThreatEvent
+from aws.models.event import ThreatEvent
 
 logger = get_logger("Lambda")
 ####################################################################

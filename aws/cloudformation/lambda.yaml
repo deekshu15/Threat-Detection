@@ -1,0 +1,423 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  AWS Lambda infrastructure for the
+  AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+      - test
+      - prod
+
+  LambdaExecutionRoleArn:
+
+    Type: String
+
+Resources:
+
+###########################################################################
+# Threat Enrichment Lambda
+###########################################################################
+
+  ThreatEnrichmentFunction:
+
+    Type: AWS::Lambda::Function
+
+    Properties:
+
+      FunctionName:
+
+        Fn::Sub: ThreatEnrichment-${Environment}
+
+      Runtime: python3.12
+
+      Handler: lambda_function.lambda_handler
+
+      Role:
+
+        Ref: LambdaExecutionRoleArn
+
+      Timeout: 60
+
+      MemorySize: 512
+
+      Code:
+
+        S3Bucket: threat-detection-lambda-code
+
+        S3Key: threat_enrichment.zip
+
+      Environment:
+
+        Variables:
+
+          ENVIRONMENT:
+
+            Ref: Environment
+
+
+###########################################################################
+# Feature Engineering Lambda
+###########################################################################
+
+  FeatureEngineeringFunction:
+
+    Type: AWS::Lambda::Function
+
+    Properties:
+
+      FunctionName:
+
+        Fn::Sub: FeatureEngineering-${Environment}
+
+      Runtime: python3.12
+
+      Handler: lambda_function.lambda_handler
+
+      Role:
+
+        Ref: LambdaExecutionRoleArn
+
+      Timeout: 60
+
+      MemorySize: 512
+
+      Code:
+
+        S3Bucket: threat-detection-lambda-code
+
+        S3Key: feature_engineering.zip
+
+      Environment:
+
+        Variables:
+
+          ENVIRONMENT:
+
+            Ref: Environment
+
+
+###########################################################################
+# ML Engine Lambda
+###########################################################################
+
+  MLEngineFunction:
+
+    Type: AWS::Lambda::Function
+
+    Properties:
+
+      FunctionName:
+
+        Fn::Sub: MLEngine-${Environment}
+
+      Runtime: python3.12
+
+      Handler: lambda_function.lambda_handler
+
+      Role:
+
+        Ref: LambdaExecutionRoleArn
+
+      Timeout: 120
+
+      MemorySize: 1024
+
+      Code:
+
+        S3Bucket: threat-detection-lambda-code
+
+        S3Key: ml_engine.zip
+
+      Environment:
+
+        Variables:
+
+          ENVIRONMENT:
+
+            Ref: Environment
+
+###########################################################################
+# Risk Engine Lambda
+###########################################################################
+
+  RiskEngineFunction:
+
+    Type: AWS::Lambda::Function
+
+    Properties:
+
+      FunctionName:
+
+        Fn::Sub: RiskEngine-${Environment}
+
+      Runtime: python3.12
+
+      Handler: lambda_function.lambda_handler
+
+      Role:
+
+        Ref: LambdaExecutionRoleArn
+
+      Timeout: 120
+
+      MemorySize: 1024
+
+      Code:
+
+        S3Bucket: threat-detection-lambda-code
+
+        S3Key: risk_engine.zip
+
+      Environment:
+
+        Variables:
+
+          ENVIRONMENT:
+
+            Ref: Environment
+
+
+###########################################################################
+# Recommendation Engine Lambda
+###########################################################################
+
+  RecommendationEngineFunction:
+
+    Type: AWS::Lambda::Function
+
+    Properties:
+
+      FunctionName:
+
+        Fn::Sub: RecommendationEngine-${Environment}
+
+      Runtime: python3.12
+
+      Handler: lambda_function.lambda_handler
+
+      Role:
+
+        Ref: LambdaExecutionRoleArn
+
+      Timeout: 120
+
+      MemorySize: 1024
+
+      Code:
+
+        S3Bucket: threat-detection-lambda-code
+
+        S3Key: recommendation_engine.zip
+
+      Environment:
+
+        Variables:
+
+          ENVIRONMENT:
+
+            Ref: Environment
+
+
+###########################################################################
+# Incident Correlation Lambda
+###########################################################################
+
+  IncidentCorrelationFunction:
+
+    Type: AWS::Lambda::Function
+
+    Properties:
+
+      FunctionName:
+
+        Fn::Sub: IncidentCorrelation-${Environment}
+
+      Runtime: python3.12
+
+      Handler: lambda_function.lambda_handler
+
+      Role:
+
+        Ref: LambdaExecutionRoleArn
+
+      Timeout: 120
+
+      MemorySize: 1024
+
+      Code:
+
+        S3Bucket: threat-detection-lambda-code
+
+        S3Key: incident_correlation.zip
+
+      Environment:
+
+        Variables:
+
+          ENVIRONMENT:
+
+            Ref: Environment
+
+
+###########################################################################
+# CloudWatch Log Groups
+###########################################################################
+
+  ThreatEnrichmentLogGroup:
+
+    Type: AWS::Logs::LogGroup
+
+    Properties:
+
+      LogGroupName:
+
+        Fn::Sub: /aws/lambda/ThreatEnrichment-${Environment}
+
+      RetentionInDays: 30
+
+
+  FeatureEngineeringLogGroup:
+
+    Type: AWS::Logs::LogGroup
+
+    Properties:
+
+      LogGroupName:
+
+        Fn::Sub: /aws/lambda/FeatureEngineering-${Environment}
+
+      RetentionInDays: 30
+
+
+  MLEngineLogGroup:
+
+    Type: AWS::Logs::LogGroup
+
+    Properties:
+
+      LogGroupName:
+
+        Fn::Sub: /aws/lambda/MLEngine-${Environment}
+
+      RetentionInDays: 30
+
+
+  RiskEngineLogGroup:
+
+    Type: AWS::Logs::LogGroup
+
+    Properties:
+
+      LogGroupName:
+
+        Fn::Sub: /aws/lambda/RiskEngine-${Environment}
+
+      RetentionInDays: 30
+
+
+  RecommendationEngineLogGroup:
+
+    Type: AWS::Logs::LogGroup
+
+    Properties:
+
+      LogGroupName:
+
+        Fn::Sub: /aws/lambda/RecommendationEngine-${Environment}
+
+      RetentionInDays: 30
+
+
+  IncidentCorrelationLogGroup:
+
+    Type: AWS::Logs::LogGroup
+
+    Properties:
+
+      LogGroupName:
+
+        Fn::Sub: /aws/lambda/IncidentCorrelation-${Environment}
+
+      RetentionInDays: 30
+
+
+###########################################################################
+# Outputs
+###########################################################################
+
+Outputs:
+
+  ThreatEnrichmentArn:
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ThreatEnrichmentFunction
+
+        - Arn
+
+
+  FeatureEngineeringArn:
+
+    Value:
+
+      Fn::GetAtt:
+
+        - FeatureEngineeringFunction
+
+        - Arn
+
+
+  MLEngineArn:
+
+    Value:
+
+      Fn::GetAtt:
+
+        - MLEngineFunction
+
+        - Arn
+
+
+  RiskEngineArn:
+
+    Value:
+
+      Fn::GetAtt:
+
+        - RiskEngineFunction
+
+        - Arn
+
+
+  RecommendationEngineArn:
+
+    Value:
+
+      Fn::GetAtt:
+
+        - RecommendationEngineFunction
+
+        - Arn
+
+
+  IncidentCorrelationArn:
+
+    Value:
+
+      Fn::GetAtt:
+
+        - IncidentCorrelationFunction
+
+        - Arn

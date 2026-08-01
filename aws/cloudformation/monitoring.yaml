@@ -1,0 +1,330 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  CloudWatch Monitoring infrastructure for the
+  AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+      - test
+      - prod
+
+  AlarmTopicArn:
+
+    Type: String
+
+Resources:
+
+###########################################################################
+# CloudWatch Dashboard
+###########################################################################
+
+  ThreatDetectionDashboard:
+
+    Type: AWS::CloudWatch::Dashboard
+
+    Properties:
+
+      DashboardName:
+
+        Fn::Sub: ThreatDetectionDashboard-${Environment}
+
+      DashboardBody: |
+
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 2,
+              "properties": {
+                "markdown": "# AI-Assisted Threat Detection Dashboard"
+              }
+            }
+          ]
+        }
+
+
+###########################################################################
+# Lambda Error Alarm
+###########################################################################
+
+  LambdaErrorsAlarm:
+
+    Type: AWS::CloudWatch::Alarm
+
+    Properties:
+
+      AlarmName:
+
+        Fn::Sub: LambdaErrors-${Environment}
+
+      Namespace: AWS/Lambda
+
+      MetricName: Errors
+
+      Statistic: Sum
+
+      Period: 300
+
+      EvaluationPeriods: 1
+
+      Threshold: 1
+
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+      TreatMissingData: notBreaching
+
+      AlarmActions:
+
+        - Ref: AlarmTopicArn
+
+
+###########################################################################
+# Lambda Duration Alarm
+###########################################################################
+
+  LambdaDurationAlarm:
+
+    Type: AWS::CloudWatch::Alarm
+
+    Properties:
+
+      AlarmName:
+
+        Fn::Sub: LambdaDuration-${Environment}
+
+      Namespace: AWS/Lambda
+
+      MetricName: Duration
+
+      Statistic: Average
+
+      Period: 300
+
+      EvaluationPeriods: 1
+
+      Threshold: 10000
+
+      ComparisonOperator: GreaterThanThreshold
+
+      TreatMissingData: notBreaching
+
+      AlarmActions:
+
+        - Ref: AlarmTopicArn
+
+
+###########################################################################
+# API Gateway 5XX Alarm
+###########################################################################
+
+  ApiGateway5XXAlarm:
+
+    Type: AWS::CloudWatch::Alarm
+
+    Properties:
+
+      AlarmName:
+
+        Fn::Sub: ApiGateway5XX-${Environment}
+
+      Namespace: AWS/ApiGateway
+
+      MetricName: 5XXError
+
+      Statistic: Sum
+
+      Period: 300
+
+      EvaluationPeriods: 1
+
+      Threshold: 1
+
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+      TreatMissingData: notBreaching
+
+      AlarmActions:
+
+        - Ref: AlarmTopicArn
+
+###########################################################################
+# DynamoDB Throttling Alarm
+###########################################################################
+
+  DynamoDBThrottleAlarm:
+
+    Type: AWS::CloudWatch::Alarm
+
+    Properties:
+
+      AlarmName:
+
+        Fn::Sub: DynamoDBThrottle-${Environment}
+
+      AlarmDescription: DynamoDB throttling detected
+
+      Namespace: AWS/DynamoDB
+
+      MetricName: ThrottledRequests
+
+      Statistic: Sum
+
+      Period: 300
+
+      EvaluationPeriods: 1
+
+      Threshold: 1
+
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+      TreatMissingData: notBreaching
+
+      AlarmActions:
+
+        - Ref: AlarmTopicArn
+
+
+###########################################################################
+# Kinesis Incoming Records Alarm
+###########################################################################
+
+  KinesisIncomingAlarm:
+
+    Type: AWS::CloudWatch::Alarm
+
+    Properties:
+
+      AlarmName:
+
+        Fn::Sub: KinesisIncoming-${Environment}
+
+      Namespace: AWS/Kinesis
+
+      MetricName: IncomingRecords
+
+      Statistic: Sum
+
+      Period: 300
+
+      EvaluationPeriods: 1
+
+      Threshold: 1
+
+      ComparisonOperator: LessThanThreshold
+
+      TreatMissingData: notBreaching
+
+      AlarmActions:
+
+        - Ref: AlarmTopicArn
+
+
+###########################################################################
+# EventBridge Scheduled Rule
+###########################################################################
+
+  DailyHealthCheckRule:
+
+    Type: AWS::Events::Rule
+
+    Properties:
+
+      Name:
+
+        Fn::Sub: ThreatDetectionDailyHealth-${Environment}
+
+      Description: Daily health monitoring
+
+      ScheduleExpression: rate(1 day)
+
+      State: ENABLED
+
+
+###########################################################################
+# Central Log Group
+###########################################################################
+
+  MonitoringLogGroup:
+
+    Type: AWS::Logs::LogGroup
+
+    Properties:
+
+      LogGroupName:
+
+        Fn::Sub: /aws/threat-detection/${Environment}
+
+      RetentionInDays: 30
+
+
+###########################################################################
+# Metric Filter
+###########################################################################
+
+  ErrorMetricFilter:
+
+    Type: AWS::Logs::MetricFilter
+
+    Properties:
+
+      LogGroupName:
+
+        Ref: MonitoringLogGroup
+
+      FilterPattern:
+
+        "\"ERROR\""
+
+      MetricTransformations:
+
+        - MetricNamespace: ThreatDetection
+
+          MetricName: ErrorCount
+
+          MetricValue: "1"
+
+
+###########################################################################
+# Outputs
+###########################################################################
+
+Outputs:
+
+  DashboardName:
+
+    Description: CloudWatch Dashboard
+
+    Value:
+
+      Ref: ThreatDetectionDashboard
+
+
+  MonitoringLogGroup:
+
+    Description: Monitoring Log Group
+
+    Value:
+
+      Ref: MonitoringLogGroup
+
+
+  DailyHealthRule:
+
+    Description: EventBridge Health Rule
+
+    Value:
+
+      Ref: DailyHealthCheckRule

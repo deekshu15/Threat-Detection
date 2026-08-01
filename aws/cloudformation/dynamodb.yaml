@@ -1,0 +1,329 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Amazon DynamoDB infrastructure for the
+  AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+      - test
+      - prod
+
+Resources:
+
+###########################################################################
+# Threat Table
+###########################################################################
+
+  ThreatTable:
+
+    Type: AWS::DynamoDB::Table
+
+    Properties:
+
+      TableName:
+
+        Fn::Sub: ThreatTable-${Environment}
+
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+
+        - AttributeName: ThreatId
+          AttributeType: S
+
+      KeySchema:
+
+        - AttributeName: ThreatId
+          KeyType: HASH
+
+      PointInTimeRecoverySpecification:
+
+        PointInTimeRecoveryEnabled: true
+
+      SSESpecification:
+
+        SSEEnabled: true
+
+      TimeToLiveSpecification:
+
+        AttributeName: ExpirationTime
+
+        Enabled: true
+
+      Tags:
+
+        - Key: Project
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+          Value:
+            Ref: Environment
+
+
+###########################################################################
+# IOC Table
+###########################################################################
+
+  IOCTable:
+
+    Type: AWS::DynamoDB::Table
+
+    Properties:
+
+      TableName:
+
+        Fn::Sub: IOCTable-${Environment}
+
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+
+        - AttributeName: IOCId
+          AttributeType: S
+
+      KeySchema:
+
+        - AttributeName: IOCId
+          KeyType: HASH
+
+      PointInTimeRecoverySpecification:
+
+        PointInTimeRecoveryEnabled: true
+
+      SSESpecification:
+
+        SSEEnabled: true
+
+      Tags:
+
+        - Key: Project
+          Value: AI-Assisted Threat Detection Dashboard
+
+
+###########################################################################
+# Asset Table
+###########################################################################
+
+  AssetTable:
+
+    Type: AWS::DynamoDB::Table
+
+    Properties:
+
+      TableName:
+
+        Fn::Sub: AssetTable-${Environment}
+
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+
+        - AttributeName: AssetId
+          AttributeType: S
+
+      KeySchema:
+
+        - AttributeName: AssetId
+          KeyType: HASH
+
+      PointInTimeRecoverySpecification:
+
+        PointInTimeRecoveryEnabled: true
+
+      SSESpecification:
+
+        SSEEnabled: true
+
+      Tags:
+
+        - Key: Project
+          Value: AI-Assisted Threat Detection Dashboard
+
+###########################################################################
+# Incident Table
+###########################################################################
+
+  IncidentTable:
+
+    Type: AWS::DynamoDB::Table
+
+    Properties:
+
+      TableName:
+
+        Fn::Sub: IncidentTable-${Environment}
+
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+
+        - AttributeName: IncidentId
+          AttributeType: S
+
+        - AttributeName: Severity
+          AttributeType: S
+
+      KeySchema:
+
+        - AttributeName: IncidentId
+          KeyType: HASH
+
+      GlobalSecondaryIndexes:
+
+        - IndexName: SeverityIndex
+
+          KeySchema:
+
+            - AttributeName: Severity
+
+              KeyType: HASH
+
+          Projection:
+
+            ProjectionType: ALL
+
+      PointInTimeRecoverySpecification:
+
+        PointInTimeRecoveryEnabled: true
+
+      SSESpecification:
+
+        SSEEnabled: true
+
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
+
+
+###########################################################################
+# User Table
+###########################################################################
+
+  UserTable:
+
+    Type: AWS::DynamoDB::Table
+
+    Properties:
+
+      TableName:
+
+        Fn::Sub: UserTable-${Environment}
+
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+
+        - AttributeName: UserId
+          AttributeType: S
+
+        - AttributeName: Email
+          AttributeType: S
+
+      KeySchema:
+
+        - AttributeName: UserId
+
+          KeyType: HASH
+
+      GlobalSecondaryIndexes:
+
+        - IndexName: EmailIndex
+
+          KeySchema:
+
+            - AttributeName: Email
+
+              KeyType: HASH
+
+          Projection:
+
+            ProjectionType: ALL
+
+      PointInTimeRecoverySpecification:
+
+        PointInTimeRecoveryEnabled: true
+
+      SSESpecification:
+
+        SSEEnabled: true
+
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
+
+
+###########################################################################
+# Outputs
+###########################################################################
+
+Outputs:
+
+  ThreatTableName:
+
+    Description: Threat table name
+
+    Value:
+
+      Ref: ThreatTable
+
+
+  IOCTableName:
+
+    Description: IOC table name
+
+    Value:
+
+      Ref: IOCTable
+
+
+  AssetTableName:
+
+    Description: Asset table name
+
+    Value:
+
+      Ref: AssetTable
+
+
+  IncidentTableName:
+
+    Description: Incident table name
+
+    Value:
+
+      Ref: IncidentTable
+
+
+  UserTableName:
+
+    Description: User table name
+
+    Value:
+
+      Ref: UserTable

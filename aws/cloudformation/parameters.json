@@ -1,0 +1,41 @@
+{
+  "Parameters": {
+
+    "Environment": {
+      "ParameterValue": "dev"
+    },
+
+    "LambdaCodeBucket": {
+      "ParameterValue": "threat-detection-lambda-code"
+    },
+
+    "AlertEmail": {
+      "ParameterValue": "security@example.com"
+    },
+
+    "AlertPhoneNumber": {
+      "ParameterValue": ""
+    },
+
+    "AwsAccountId": {
+      "ParameterValue": "123456789012"
+    },
+
+    "QuickSightUser": {
+      "ParameterValue": "admin"
+    },
+
+    "ThreatEnrichmentLambdaArn": {
+      "ParameterValue": "arn:aws:lambda:ap-south-1:123456789012:function:ThreatEnrichment-dev"
+    },
+
+    "LambdaExecutionRoleArn": {
+      "ParameterValue": "arn:aws:iam::123456789012:role/ThreatDetectionLambdaRole"
+    },
+
+    "AlarmTopicArn": {
+      "ParameterValue": "arn:aws:sns:ap-south-1:123456789012:CriticalAlerts-dev"
+    }
+
+  }
+}

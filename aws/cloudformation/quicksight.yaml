@@ -1,0 +1,309 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Amazon QuickSight infrastructure for the
+  AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+      - test
+      - prod
+
+  AwsAccountId:
+
+    Type: String
+
+  QuickSightUser:
+
+    Type: String
+
+Resources:
+
+###########################################################################
+# QuickSight Data Source
+###########################################################################
+
+  ThreatDetectionDataSource:
+
+    Type: AWS::QuickSight::DataSource
+
+    Properties:
+
+      AwsAccountId:
+
+        Ref: AwsAccountId
+
+      DataSourceId:
+
+        Fn::Sub: threat-datasource-${Environment}
+
+      Name:
+
+        Fn::Sub: ThreatDetectionDataSource-${Environment}
+
+      Type: ATHENA
+
+      DataSourceParameters:
+
+        AthenaParameters:
+
+          WorkGroup: primary
+
+      Permissions:
+
+        - Principal:
+
+            Fn::Sub: arn:aws:quicksight:${AWS::Region}:${AWS::AccountId}:user/default/${QuickSightUser}
+
+          Actions:
+
+            - quicksight:DescribeDataSource
+
+            - quicksight:UpdateDataSource
+
+            - quicksight:DeleteDataSource
+
+            - quicksight:PassDataSource
+
+
+###########################################################################
+# QuickSight Dataset
+###########################################################################
+
+  ThreatDetectionDataset:
+
+    Type: AWS::QuickSight::DataSet
+
+    Properties:
+
+      AwsAccountId:
+
+        Ref: AwsAccountId
+
+      DataSetId:
+
+        Fn::Sub: threat-dataset-${Environment}
+
+      Name:
+
+        Fn::Sub: ThreatDetectionDataset-${Environment}
+
+      ImportMode: SPICE
+
+      PhysicalTableMap:
+
+        ThreatTable:
+
+          RelationalTable:
+
+            DataSourceArn:
+
+              Fn::GetAtt:
+
+                - ThreatDetectionDataSource
+
+                - Arn
+
+            Catalog: AwsDataCatalog
+
+            Schema: default
+
+            Name: threat_events
+
+            InputColumns:
+
+              - Name: threat_id
+
+                Type: STRING
+
+              - Name: severity
+
+                Type: STRING
+
+              - Name: risk_score
+
+                Type: DECIMAL
+
+###########################################################################
+# QuickSight Analysis
+###########################################################################
+
+  ThreatDetectionAnalysis:
+
+    Type: AWS::QuickSight::Analysis
+
+    Properties:
+
+      AwsAccountId:
+
+        Ref: AwsAccountId
+
+      AnalysisId:
+
+        Fn::Sub: threat-analysis-${Environment}
+
+      Name:
+
+        Fn::Sub: ThreatDetectionAnalysis-${Environment}
+
+      SourceEntity:
+
+        SourceTemplate:
+
+          Arn:
+
+            Fn::Sub: arn:aws:quicksight:${AWS::Region}:${AWS::AccountId}:template/default
+
+          DataSetReferences:
+
+            - DataSetPlaceholder: ThreatData
+
+              DataSetArn:
+
+                Fn::GetAtt:
+
+                  - ThreatDetectionDataset
+
+                  - Arn
+
+      Permissions:
+
+        - Principal:
+
+            Fn::Sub: arn:aws:quicksight:${AWS::Region}:${AWS::AccountId}:user/default/${QuickSightUser}
+
+          Actions:
+
+            - quicksight:DescribeAnalysis
+
+            - quicksight:UpdateAnalysis
+
+            - quicksight:DeleteAnalysis
+
+            - quicksight:QueryAnalysis
+
+
+###########################################################################
+# QuickSight Dashboard
+###########################################################################
+
+  ThreatDetectionDashboard:
+
+    Type: AWS::QuickSight::Dashboard
+
+    Properties:
+
+      AwsAccountId:
+
+        Ref: AwsAccountId
+
+      DashboardId:
+
+        Fn::Sub: threat-dashboard-${Environment}
+
+      Name:
+
+        Fn::Sub: ThreatDetectionDashboard-${Environment}
+
+      SourceEntity:
+
+        SourceTemplate:
+
+          Arn:
+
+            Fn::Sub: arn:aws:quicksight:${AWS::Region}:${AWS::AccountId}:template/default
+
+          DataSetReferences:
+
+            - DataSetPlaceholder: ThreatData
+
+              DataSetArn:
+
+                Fn::GetAtt:
+
+                  - ThreatDetectionDataset
+
+                  - Arn
+
+      Permissions:
+
+        - Principal:
+
+            Fn::Sub: arn:aws:quicksight:${AWS::Region}:${AWS::AccountId}:user/default/${QuickSightUser}
+
+          Actions:
+
+            - quicksight:DescribeDashboard
+
+            - quicksight:QueryDashboard
+
+            - quicksight:UpdateDashboard
+
+            - quicksight:DeleteDashboard
+
+
+###########################################################################
+# Outputs
+###########################################################################
+
+Outputs:
+
+  QuickSightDataSourceArn:
+
+    Description: QuickSight Data Source ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ThreatDetectionDataSource
+
+        - Arn
+
+
+  QuickSightDatasetArn:
+
+    Description: QuickSight Dataset ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ThreatDetectionDataset
+
+        - Arn
+
+
+  QuickSightAnalysisArn:
+
+    Description: QuickSight Analysis ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ThreatDetectionAnalysis
+
+        - Arn
+
+
+  QuickSightDashboardArn:
+
+    Description: QuickSight Dashboard ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ThreatDetectionDashboard
+
+        - Arn

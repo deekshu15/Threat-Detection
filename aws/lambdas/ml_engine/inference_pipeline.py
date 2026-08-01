@@ -16,7 +16,7 @@ Final AI Response
 from __future__ import annotations
 
 from typing import Dict
-
+from pprint import pprint
 from feature_engineering.feature_pipeline import process_event
 from .predictor import predict
 from .postprocessor import postprocess
@@ -79,6 +79,4 @@ if __name__ == "__main__":
         "anomaly_score": 0.95,
     }
 
-    from pprint import pprint
-
-    pprint(run_inference(sample_event))
+pprint(run_inference(sample_event))

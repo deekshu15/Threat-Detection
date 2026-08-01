@@ -1,0 +1,320 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Amazon S3 infrastructure for the
+  AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+
+      - test
+
+      - prod
+
+Resources:
+
+###########################################################################
+# Raw Security Logs Bucket
+###########################################################################
+
+  RawLogsBucket:
+
+    Type: AWS::S3::Bucket
+
+    Properties:
+
+      BucketName:
+
+        Fn::Sub: threat-detection-raw-logs-${Environment}-${AWS::AccountId}
+
+      VersioningConfiguration:
+
+        Status: Enabled
+
+      BucketEncryption:
+
+        ServerSideEncryptionConfiguration:
+
+          - ServerSideEncryptionByDefault:
+
+              SSEAlgorithm: AES256
+
+      PublicAccessBlockConfiguration:
+
+        BlockPublicAcls: true
+
+        BlockPublicPolicy: true
+
+        IgnorePublicAcls: true
+
+        RestrictPublicBuckets: true
+
+
+###########################################################################
+# Processed Logs Bucket
+###########################################################################
+
+  ProcessedLogsBucket:
+
+    Type: AWS::S3::Bucket
+
+    Properties:
+
+      BucketName:
+
+        Fn::Sub: threat-detection-processed-${Environment}-${AWS::AccountId}
+
+      VersioningConfiguration:
+
+        Status: Enabled
+
+      BucketEncryption:
+
+        ServerSideEncryptionConfiguration:
+
+          - ServerSideEncryptionByDefault:
+
+              SSEAlgorithm: AES256
+
+      PublicAccessBlockConfiguration:
+
+        BlockPublicAcls: true
+
+        BlockPublicPolicy: true
+
+        IgnorePublicAcls: true
+
+        RestrictPublicBuckets: true
+
+
+###########################################################################
+# ML Models Bucket
+###########################################################################
+
+  MLModelsBucket:
+
+    Type: AWS::S3::Bucket
+
+    Properties:
+
+      BucketName:
+
+        Fn::Sub: threat-detection-models-${Environment}-${AWS::AccountId}
+
+      VersioningConfiguration:
+
+        Status: Enabled
+
+      BucketEncryption:
+
+        ServerSideEncryptionConfiguration:
+
+          - ServerSideEncryptionByDefault:
+
+              SSEAlgorithm: AES256
+
+      PublicAccessBlockConfiguration:
+
+        BlockPublicAcls: true
+
+        BlockPublicPolicy: true
+
+        IgnorePublicAcls: true
+
+        RestrictPublicBuckets: true
+
+
+###########################################################################
+# Reports Bucket
+###########################################################################
+
+  ReportsBucket:
+
+    Type: AWS::S3::Bucket
+
+    Properties:
+
+      BucketName:
+
+        Fn::Sub: threat-detection-reports-${Environment}-${AWS::AccountId}
+
+      VersioningConfiguration:
+
+        Status: Enabled
+
+      BucketEncryption:
+
+        ServerSideEncryptionConfiguration:
+
+          - ServerSideEncryptionByDefault:
+
+              SSEAlgorithm: AES256
+
+      PublicAccessBlockConfiguration:
+
+        BlockPublicAcls: true
+
+        BlockPublicPolicy: true
+
+        IgnorePublicAcls: true
+
+        RestrictPublicBuckets: true
+
+
+###########################################################################
+# Lifecycle Configuration - Raw Logs
+###########################################################################
+
+  RawLogsLifecycle:
+
+    Type: AWS::S3::Bucket
+
+    Properties:
+
+      BucketName:
+
+        Ref: RawLogsBucket
+
+      LifecycleConfiguration:
+
+        Rules:
+
+          - Id: RawLogsLifecycle
+
+            Status: Enabled
+
+            Transitions:
+
+              - TransitionInDays: 30
+
+                StorageClass: STANDARD_IA
+
+              - TransitionInDays: 90
+
+                StorageClass: GLACIER
+
+            ExpirationInDays: 365
+
+
+###########################################################################
+# Lifecycle Configuration - Processed Logs
+###########################################################################
+
+  ProcessedLogsLifecycle:
+
+    Type: AWS::S3::Bucket
+
+    Properties:
+
+      BucketName:
+
+        Ref: ProcessedLogsBucket
+
+      LifecycleConfiguration:
+
+        Rules:
+
+          - Id: ProcessedLogsLifecycle
+
+            Status: Enabled
+
+            Transitions:
+
+              - TransitionInDays: 60
+
+                StorageClass: STANDARD_IA
+
+              - TransitionInDays: 180
+
+                StorageClass: GLACIER
+
+            ExpirationInDays: 730
+
+
+###########################################################################
+# Bucket Tags
+###########################################################################
+
+  RawLogsBucketTags:
+
+    Type: AWS::S3::BucketPolicy
+
+    Properties:
+
+      Bucket:
+
+        Ref: RawLogsBucket
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement: []
+
+
+  ProcessedLogsBucketTags:
+
+    Type: AWS::S3::BucketPolicy
+
+    Properties:
+
+      Bucket:
+
+        Ref: ProcessedLogsBucket
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement: []
+
+
+###########################################################################
+# Outputs
+###########################################################################
+
+Outputs:
+
+  RawLogsBucketName:
+
+    Description: Raw Security Logs Bucket
+
+    Value:
+
+      Ref: RawLogsBucket
+
+
+  ProcessedLogsBucketName:
+
+    Description: Processed Security Logs Bucket
+
+    Value:
+
+      Ref: ProcessedLogsBucket
+
+
+  MLModelsBucketName:
+
+    Description: Machine Learning Models Bucket
+
+    Value:
+
+      Ref: MLModelsBucket
+
+
+  ReportsBucketName:
+
+    Description: Reports Bucket
+
+    Value:
+
+      Ref: ReportsBucket

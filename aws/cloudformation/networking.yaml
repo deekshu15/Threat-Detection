@@ -1,0 +1,252 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Networking infrastructure for the AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+
+      - test
+
+      - prod
+
+Resources:
+
+###########################################################################
+# VPC
+###########################################################################
+
+  ThreatDetectionVPC:
+
+    Type: AWS::EC2::VPC
+
+    Properties:
+
+      CidrBlock: 10.0.0.0/16
+
+      EnableDnsHostnames: true
+
+      EnableDnsSupport: true
+
+      Tags:
+
+        - Key: Name
+
+          Value: ThreatDetectionVPC
+
+
+###########################################################################
+# Internet Gateway
+###########################################################################
+
+  InternetGateway:
+
+    Type: AWS::EC2::InternetGateway
+
+    Properties:
+
+      Tags:
+
+        - Key: Name
+
+          Value: ThreatDetectionIGW
+
+
+###########################################################################
+# Attach Gateway
+###########################################################################
+
+  GatewayAttachment:
+
+    Type: AWS::EC2::VPCGatewayAttachment
+
+    Properties:
+
+      VpcId:
+
+        Ref: ThreatDetectionVPC
+
+      InternetGatewayId:
+
+        Ref: InternetGateway
+
+
+###########################################################################
+# Public Subnet
+###########################################################################
+
+  PublicSubnet:
+
+    Type: AWS::EC2::Subnet
+
+    Properties:
+
+      VpcId:
+
+        Ref: ThreatDetectionVPC
+
+      CidrBlock: 10.0.1.0/24
+
+      MapPublicIpOnLaunch: true
+
+      AvailabilityZone:
+
+        Fn::Select:
+
+          - 0
+
+          - Fn::GetAZs: ""
+
+
+###########################################################################
+# Private Subnet
+###########################################################################
+
+  PrivateSubnet:
+
+    Type: AWS::EC2::Subnet
+
+    Properties:
+
+      VpcId:
+
+        Ref: ThreatDetectionVPC
+
+      CidrBlock: 10.0.2.0/24
+
+      AvailabilityZone:
+
+        Fn::Select:
+
+          - 0
+
+          - Fn::GetAZs: ""
+
+
+###########################################################################
+# Public Route Table
+###########################################################################
+
+  PublicRouteTable:
+
+    Type: AWS::EC2::RouteTable
+
+    Properties:
+
+      VpcId:
+
+        Ref: ThreatDetectionVPC
+
+
+###########################################################################
+# Default Route
+###########################################################################
+
+  DefaultRoute:
+
+    Type: AWS::EC2::Route
+
+    DependsOn:
+
+      - GatewayAttachment
+
+    Properties:
+
+      RouteTableId:
+
+        Ref: PublicRouteTable
+
+      DestinationCidrBlock: 0.0.0.0/0
+
+      GatewayId:
+
+        Ref: InternetGateway
+
+
+###########################################################################
+# Public Route Association
+###########################################################################
+
+  PublicSubnetAssociation:
+
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+    Properties:
+
+      RouteTableId:
+
+        Ref: PublicRouteTable
+
+      SubnetId:
+
+        Ref: PublicSubnet
+
+
+###########################################################################
+# Security Group
+###########################################################################
+
+  ThreatDetectionSecurityGroup:
+
+    Type: AWS::EC2::SecurityGroup
+
+    Properties:
+
+      GroupDescription: Threat Detection Security Group
+
+      VpcId:
+
+        Ref: ThreatDetectionVPC
+
+      SecurityGroupIngress:
+
+        - IpProtocol: tcp
+
+          FromPort: 443
+
+          ToPort: 443
+
+          CidrIp: 0.0.0.0/0
+
+        - IpProtocol: tcp
+
+          FromPort: 80
+
+          ToPort: 80
+
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+
+  VpcId:
+
+    Value:
+
+      Ref: ThreatDetectionVPC
+
+  PublicSubnetId:
+
+    Value:
+
+      Ref: PublicSubnet
+
+  PrivateSubnetId:
+
+    Value:
+
+      Ref: PrivateSubnet
+
+  SecurityGroupId:
+
+    Value:
+
+      Ref: ThreatDetectionSecurityGroup

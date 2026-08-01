@@ -1,0 +1,371 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Amazon SNS infrastructure for the
+  AI-Assisted Threat Detection Dashboard.
+
+###########################################################################
+# Parameters
+###########################################################################
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+      - test
+      - prod
+
+  AlertEmail:
+
+    Type: String
+
+    Description: Email address for security alerts.
+
+  AlertPhoneNumber:
+
+    Type: String
+
+    Default: ""
+
+    Description: Optional phone number for SMS alerts.
+
+###########################################################################
+# Conditions
+###########################################################################
+
+Conditions:
+
+  CreateSMSSubscription:
+
+    Fn::Not:
+
+      - Fn::Equals:
+
+          - Ref: AlertPhoneNumber
+
+          - ""
+
+###########################################################################
+# Resources
+###########################################################################
+
+Resources:
+
+###########################################################################
+# Critical Alerts Topic
+###########################################################################
+
+  CriticalAlertsTopic:
+
+    Type: AWS::SNS::Topic
+
+    Properties:
+
+      TopicName:
+
+        Fn::Sub: CriticalAlerts-${Environment}
+
+      DisplayName: Critical Security Alerts
+
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
+
+###########################################################################
+# High Alerts Topic
+###########################################################################
+
+  HighAlertsTopic:
+
+    Type: AWS::SNS::Topic
+
+    Properties:
+
+      TopicName:
+
+        Fn::Sub: HighAlerts-${Environment}
+
+      DisplayName: High Severity Alerts
+
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
+
+###########################################################################
+# Medium Alerts Topic
+###########################################################################
+
+  MediumAlertsTopic:
+
+    Type: AWS::SNS::Topic
+
+    Properties:
+
+      TopicName:
+
+        Fn::Sub: MediumAlerts-${Environment}
+
+      DisplayName: Medium Severity Alerts
+
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
+
+###########################################################################
+# Email Subscriptions
+###########################################################################
+
+  CriticalEmailSubscription:
+
+    Type: AWS::SNS::Subscription
+
+    Properties:
+
+      TopicArn:
+
+        Ref: CriticalAlertsTopic
+
+      Protocol: email
+
+      Endpoint:
+
+        Ref: AlertEmail
+
+  HighEmailSubscription:
+
+    Type: AWS::SNS::Subscription
+
+    Properties:
+
+      TopicArn:
+
+        Ref: HighAlertsTopic
+
+      Protocol: email
+
+      Endpoint:
+
+        Ref: AlertEmail
+
+  MediumEmailSubscription:
+
+    Type: AWS::SNS::Subscription
+
+    Properties:
+
+      TopicArn:
+
+        Ref: MediumAlertsTopic
+
+      Protocol: email
+
+      Endpoint:
+
+        Ref: AlertEmail
+
+###########################################################################
+# Optional SMS Subscription
+###########################################################################
+
+  SMSSubscription:
+
+    Type: AWS::SNS::Subscription
+
+    Condition: CreateSMSSubscription
+
+    Properties:
+
+      TopicArn:
+
+        Ref: CriticalAlertsTopic
+
+      Protocol: sms
+
+      Endpoint:
+
+        Ref: AlertPhoneNumber
+
+###########################################################################
+# Topic Policies
+###########################################################################
+
+  CriticalTopicPolicy:
+
+    Type: AWS::SNS::TopicPolicy
+
+    Properties:
+
+      Topics:
+
+        - Ref: CriticalAlertsTopic
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Sid: AllowAccountPublish
+
+            Effect: Allow
+
+            Principal:
+
+              AWS:
+
+                Fn::Sub: arn:aws:iam::${AWS::AccountId}:root
+
+            Action:
+
+              - sns:Publish
+
+            Resource:
+
+              Ref: CriticalAlertsTopic
+
+  HighTopicPolicy:
+
+    Type: AWS::SNS::TopicPolicy
+
+    Properties:
+
+      Topics:
+
+        - Ref: HighAlertsTopic
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Sid: AllowAccountPublish
+
+            Effect: Allow
+
+            Principal:
+
+              AWS:
+
+                Fn::Sub: arn:aws:iam::${AWS::AccountId}:root
+
+            Action:
+
+              - sns:Publish
+
+            Resource:
+
+              Ref: HighAlertsTopic
+
+  MediumTopicPolicy:
+
+    Type: AWS::SNS::TopicPolicy
+
+    Properties:
+
+      Topics:
+
+        - Ref: MediumAlertsTopic
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Sid: AllowAccountPublish
+
+            Effect: Allow
+
+            Principal:
+
+              AWS:
+
+                Fn::Sub: arn:aws:iam::${AWS::AccountId}:root
+
+            Action:
+
+              - sns:Publish
+
+            Resource:
+
+              Ref: MediumAlertsTopic
+
+###########################################################################
+# Outputs
+###########################################################################
+
+Outputs:
+
+  CriticalAlertsTopicArn:
+
+    Description: ARN of the Critical Alerts SNS Topic
+
+    Value:
+
+      Ref: CriticalAlertsTopic
+
+    Export:
+
+      Name:
+
+        Fn::Sub: CriticalAlertsTopic-${Environment}
+
+  HighAlertsTopicArn:
+
+    Description: ARN of the High Alerts SNS Topic
+
+    Value:
+
+      Ref: HighAlertsTopic
+
+    Export:
+
+      Name:
+
+        Fn::Sub: HighAlertsTopic-${Environment}
+
+  MediumAlertsTopicArn:
+
+    Description: ARN of the Medium Alerts SNS Topic
+
+    Value:
+
+      Ref: MediumAlertsTopic
+
+    Export:
+
+      Name:
+
+        Fn::Sub: MediumAlertsTopic-${Environment}

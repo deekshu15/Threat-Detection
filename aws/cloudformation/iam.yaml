@@ -1,0 +1,378 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  IAM roles and policies for the
+  AI-Assisted Threat Detection Dashboard.
+
+Parameters:
+
+  Environment:
+
+    Type: String
+
+    Default: dev
+
+    AllowedValues:
+
+      - dev
+
+      - test
+
+      - prod
+
+Resources:
+
+###########################################################################
+# Lambda Execution Role
+###########################################################################
+
+  LambdaExecutionRole:
+
+    Type: AWS::IAM::Role
+
+    Properties:
+
+      RoleName: ThreatDetectionLambdaRole
+
+      AssumeRolePolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Principal:
+
+              Service:
+
+                - lambda.amazonaws.com
+
+            Action:
+
+              - sts:AssumeRole
+
+      ManagedPolicyArns:
+
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+###########################################################################
+# Lambda Policy
+###########################################################################
+
+  LambdaPolicy:
+
+    Type: AWS::IAM::Policy
+
+    Properties:
+
+      PolicyName: ThreatDetectionLambdaPolicy
+
+      Roles:
+
+        - Ref: LambdaExecutionRole
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Action:
+
+              - s3:*
+
+              - dynamodb:*
+
+              - sns:Publish
+
+              - logs:*
+
+              - cloudwatch:PutMetricData
+
+            Resource: "*"
+
+###########################################################################
+# API Gateway Role
+###########################################################################
+
+  ApiGatewayRole:
+
+    Type: AWS::IAM::Role
+
+    Properties:
+
+      RoleName: ThreatDetectionApiGatewayRole
+
+      AssumeRolePolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Principal:
+
+              Service:
+
+                - apigateway.amazonaws.com
+
+            Action:
+
+              - sts:AssumeRole
+
+###########################################################################
+# API Gateway Policy
+###########################################################################
+
+  ApiGatewayPolicy:
+
+    Type: AWS::IAM::Policy
+
+    Properties:
+
+      PolicyName: ApiGatewayInvokeLambda
+
+      Roles:
+
+        - Ref: ApiGatewayRole
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Action:
+
+              - lambda:InvokeFunction
+
+            Resource: "*"
+
+###########################################################################
+# CloudWatch Role
+###########################################################################
+
+  CloudWatchRole:
+
+    Type: AWS::IAM::Role
+
+    Properties:
+
+      RoleName: ThreatDetectionCloudWatchRole
+
+      AssumeRolePolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Principal:
+
+              Service:
+
+                - events.amazonaws.com
+
+            Action:
+
+              - sts:AssumeRole
+
+
+###########################################################################
+# CloudWatch Policy
+###########################################################################
+
+  CloudWatchPolicy:
+
+    Type: AWS::IAM::Policy
+
+    Properties:
+
+      PolicyName: ThreatDetectionCloudWatchPolicy
+
+      Roles:
+
+        - Ref: CloudWatchRole
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Action:
+
+              - logs:CreateLogGroup
+
+              - logs:CreateLogStream
+
+              - logs:PutLogEvents
+
+              - cloudwatch:PutMetricData
+
+              - cloudwatch:GetMetricData
+
+              - cloudwatch:ListMetrics
+
+            Resource: "*"
+
+
+###########################################################################
+# S3 Access Policy
+###########################################################################
+
+  S3AccessPolicy:
+
+    Type: AWS::IAM::Policy
+
+    Properties:
+
+      PolicyName: ThreatDetectionS3Policy
+
+      Roles:
+
+        - Ref: LambdaExecutionRole
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Action:
+
+              - s3:GetObject
+
+              - s3:PutObject
+
+              - s3:DeleteObject
+
+              - s3:ListBucket
+
+            Resource: "*"
+
+
+###########################################################################
+# DynamoDB Access Policy
+###########################################################################
+
+  DynamoDBAccessPolicy:
+
+    Type: AWS::IAM::Policy
+
+    Properties:
+
+      PolicyName: ThreatDetectionDynamoDBPolicy
+
+      Roles:
+
+        - Ref: LambdaExecutionRole
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Action:
+
+              - dynamodb:GetItem
+
+              - dynamodb:PutItem
+
+              - dynamodb:UpdateItem
+
+              - dynamodb:DeleteItem
+
+              - dynamodb:Query
+
+              - dynamodb:Scan
+
+            Resource: "*"
+
+
+###########################################################################
+# SNS Publish Policy
+###########################################################################
+
+  SNSPublishPolicy:
+
+    Type: AWS::IAM::Policy
+
+    Properties:
+
+      PolicyName: ThreatDetectionSNSPolicy
+
+      Roles:
+
+        - Ref: LambdaExecutionRole
+
+      PolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Action:
+
+              - sns:Publish
+
+            Resource: "*"
+
+
+Outputs:
+
+###########################################################################
+# Outputs
+###########################################################################
+
+  LambdaExecutionRoleArn:
+
+    Description: Lambda Execution Role ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - LambdaExecutionRole
+
+        - Arn
+
+  ApiGatewayRoleArn:
+
+    Description: API Gateway Role ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ApiGatewayRole
+
+        - Arn
+
+  CloudWatchRoleArn:
+
+    Description: CloudWatch Role ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - CloudWatchRole
+
+        - Arn
