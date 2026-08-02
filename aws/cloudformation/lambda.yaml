@@ -22,6 +22,10 @@ Parameters:
 
     Type: String
 
+  LambdaCodeBucket:
+
+    Type: String
+
 Resources:
 
 ###########################################################################
@@ -52,7 +56,9 @@ Resources:
 
       Code:
 
-        S3Bucket: threat-detection-lambda-code
+        S3Bucket: 
+
+          Ref: LambdaCodeBucket
 
         S3Key: threat_enrichment.zip
 
@@ -93,7 +99,9 @@ Resources:
 
       Code:
 
-        S3Bucket: threat-detection-lambda-code
+        S3Bucket: 
+
+          Ref: LambdaCodeBucket
 
         S3Key: feature_engineering.zip
 
@@ -134,7 +142,9 @@ Resources:
 
       Code:
 
-        S3Bucket: threat-detection-lambda-code
+        S3Bucket: 
+
+          Ref: LambdaCodeBucket
 
         S3Key: ml_engine.zip
 
@@ -174,7 +184,9 @@ Resources:
 
       Code:
 
-        S3Bucket: threat-detection-lambda-code
+        S3Bucket: 
+
+          Ref: LambdaCodeBucket
 
         S3Key: risk_engine.zip
 
@@ -215,7 +227,10 @@ Resources:
 
       Code:
 
-        S3Bucket: threat-detection-lambda-code
+        S3Bucket: 
+        
+          Ref: LambdaCodeBucket
+          
 
         S3Key: recommendation_engine.zip
 
@@ -256,7 +271,9 @@ Resources:
 
       Code:
 
-        S3Bucket: threat-detection-lambda-code
+        S3Bucket: 
+
+          Ref: LambdaCodeBucket
 
         S3Key: incident_correlation.zip
 

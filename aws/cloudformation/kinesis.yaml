@@ -4,6 +4,10 @@ Description: >
   Amazon Kinesis infrastructure for the
   AI-Assisted Threat Detection Dashboard.
 
+###########################################################################
+# Parameters
+###########################################################################
+
 Parameters:
 
   Environment:
@@ -17,6 +21,10 @@ Parameters:
       - dev
       - test
       - prod
+
+###########################################################################
+# Resources
+###########################################################################
 
 Resources:
 
@@ -56,6 +64,104 @@ Resources:
 
             Ref: Environment
 
+###########################################################################
+# CloudWatch Log Group
+###########################################################################
+
+  FirehoseLogGroup:
+
+    Type: AWS::Logs::LogGroup
+
+    Properties:
+
+      LogGroupName:
+
+        Fn::Sub: /aws/kinesisfirehose/${Environment}
+
+      RetentionInDays: 30
+
+###########################################################################
+# CloudWatch Log Stream
+###########################################################################
+
+  FirehoseLogStream:
+
+    Type: AWS::Logs::LogStream
+
+    Properties:
+
+      LogGroupName:
+
+        Ref: FirehoseLogGroup
+
+      LogStreamName: FirehoseDelivery
+
+###########################################################################
+# Firehose IAM Role
+###########################################################################
+
+  FirehoseRole:
+
+    Type: AWS::IAM::Role
+
+    Properties:
+
+      RoleName:
+
+        Fn::Sub: ThreatDetectionFirehoseRole-${Environment}
+
+      AssumeRolePolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Principal:
+
+              Service:
+
+                - firehose.amazonaws.com
+
+            Action:
+
+              - sts:AssumeRole
+
+      Policies:
+
+        - PolicyName: FirehosePolicy
+
+          PolicyDocument:
+
+            Version: "2012-10-17"
+
+            Statement:
+
+              - Effect: Allow
+
+                Action:
+
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+
+                Resource:
+
+                  - Fn::Sub: arn:aws:s3:::ai-threat-processed-${Environment}-${AWS::AccountId}
+
+                  - Fn::Sub: arn:aws:s3:::ai-threat-processed-${Environment}-${AWS::AccountId}/*
+
+              - Effect: Allow
+
+                Action:
+
+                  - logs:PutLogEvents
+
+                Resource: "*"
 
 ###########################################################################
 # Firehose Delivery Stream
@@ -73,54 +179,72 @@ Resources:
 
       DeliveryStreamType: DirectPut
 
-      S3DestinationConfiguration:
+      ExtendedS3DestinationConfiguration:
 
         BucketARN:
 
-          Fn::Sub: arn:aws:s3:::threat-detection-processed-${Environment}-${AWS::AccountId}
+          Fn::Sub: arn:aws:s3:::ai-threat-processed-${Environment}-${AWS::AccountId}
 
         RoleARN:
 
-          Fn::Sub: arn:aws:iam::${AWS::AccountId}:role/ThreatDetectionLambdaRole
+          Fn::GetAtt:
+
+            - FirehoseRole
+
+            - Arn
 
         Prefix: firehose/
 
+        CloudWatchLoggingOptions:
+
+          Enabled: true
+
+          LogGroupName:
+
+            Ref: FirehoseLogGroup
+
+          LogStreamName:
+
+            Ref: FirehoseLogStream
 
 ###########################################################################
-# CloudWatch Log Group
+# Kinesis Analytics IAM Role
 ###########################################################################
 
-  KinesisLogGroup:
+  KinesisAnalyticsRole:
 
-    Type: AWS::Logs::LogGroup
+    Type: AWS::IAM::Role
 
     Properties:
 
-      LogGroupName:
+      RoleName:
 
-        Fn::Sub: /aws/kinesis/${Environment}
+        Fn::Sub: ThreatDetectionAnalyticsRole-${Environment}
 
-      RetentionInDays: 30
+      AssumeRolePolicyDocument:
 
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Principal:
+
+              Service:
+
+                - kinesisanalytics.amazonaws.com
+
+            Action:
+
+              - sts:AssumeRole
+
+      ManagedPolicyArns:
+
+        - arn:aws:iam::aws:policy/AmazonKinesisFullAccess
 
 ###########################################################################
-# CloudWatch Log Stream
-###########################################################################
-
-  KinesisLogStream:
-
-    Type: AWS::Logs::LogStream
-
-    Properties:
-
-      LogGroupName:
-
-        Ref: KinesisLogGroup
-
-      LogStreamName: ProcessingLogs
-
-###########################################################################
-# Kinesis Analytics Application
+# Analytics Application
 ###########################################################################
 
   ThreatDetectionAnalytics:
@@ -137,7 +261,11 @@ Resources:
 
       ServiceExecutionRole:
 
-        Fn::Sub: arn:aws:iam::${AWS::AccountId}:role/ThreatDetectionLambdaRole
+        Fn::GetAtt:
+
+          - KinesisAnalyticsRole
+
+          - Arn
 
       ApplicationConfiguration:
 
@@ -155,21 +283,8 @@ Resources:
 
           CodeContentType: PLAINTEXT
 
-        EnvironmentProperties:
-
-          PropertyGroups:
-
-            - PropertyGroupId: ApplicationProperties
-
-              PropertyMap:
-
-                Environment:
-
-                  Ref: Environment
-
-
 ###########################################################################
-# CloudWatch Alarm - Incoming Records
+# CloudWatch Alarm
 ###########################################################################
 
   IncomingRecordsAlarm:
@@ -181,8 +296,6 @@ Resources:
       AlarmName:
 
         Fn::Sub: KinesisIncomingRecords-${Environment}
-
-      AlarmDescription: Low incoming records
 
       Namespace: AWS/Kinesis
 
@@ -208,9 +321,8 @@ Resources:
 
       TreatMissingData: notBreaching
 
-
 ###########################################################################
-# CloudWatch Alarm - Write Provisioning
+# Write Alarm
 ###########################################################################
 
   WriteProvisionedAlarm:
@@ -247,7 +359,6 @@ Resources:
 
       TreatMissingData: notBreaching
 
-
 ###########################################################################
 # Outputs
 ###########################################################################
@@ -256,16 +367,11 @@ Outputs:
 
   KinesisStreamName:
 
-    Description: Kinesis Data Stream
-
     Value:
 
       Ref: ThreatDetectionStream
 
-
   KinesisStreamArn:
-
-    Description: Kinesis Stream ARN
 
     Value:
 
@@ -275,20 +381,38 @@ Outputs:
 
         - Arn
 
-
-  FirehoseName:
-
-    Description: Firehose Delivery Stream
+  FirehoseArn:
 
     Value:
 
-      Ref: ThreatDetectionFirehose
+      Fn::GetAtt:
 
+        - ThreatDetectionFirehose
+
+        - Arn
 
   AnalyticsApplication:
-
-    Description: Analytics Application
 
     Value:
 
       Ref: ThreatDetectionAnalytics
+
+  FirehoseRoleArn:
+
+    Value:
+
+      Fn::GetAtt:
+
+        - FirehoseRole
+
+        - Arn
+
+  AnalyticsRoleArn:
+
+    Value:
+
+      Fn::GetAtt:
+
+        - KinesisAnalyticsRole
+
+        - Arn

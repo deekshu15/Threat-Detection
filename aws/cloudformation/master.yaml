@@ -4,6 +4,10 @@ Description: >
   Master CloudFormation stack for the
   AI-Assisted Threat Detection Dashboard.
 
+###########################################################################
+# Parameters
+###########################################################################
+
 Parameters:
 
   Environment:
@@ -32,13 +36,9 @@ Parameters:
 
     Default: ""
 
-  AwsAccountId:
-
-    Type: String
-
-  QuickSightUser:
-
-    Type: String
+###########################################################################
+# Resources
+###########################################################################
 
 Resources:
 
@@ -59,7 +59,6 @@ Resources:
         Environment:
 
           Ref: Environment
-
 
 ###########################################################################
 # IAM
@@ -83,7 +82,6 @@ Resources:
 
           Ref: Environment
 
-
 ###########################################################################
 # S3
 ###########################################################################
@@ -106,7 +104,6 @@ Resources:
 
           Ref: Environment
 
-
 ###########################################################################
 # DynamoDB
 ###########################################################################
@@ -128,7 +125,6 @@ Resources:
         Environment:
 
           Ref: Environment
-
 
 ###########################################################################
 # Lambda
@@ -162,6 +158,9 @@ Resources:
 
             - Outputs.LambdaExecutionRoleArn
 
+        LambdaCodeBucket:
+
+          Ref: LambdaCodeBucket
 
 ###########################################################################
 # API Gateway
@@ -193,7 +192,6 @@ Resources:
 
             - Outputs.ThreatEnrichmentArn
 
-
 ###########################################################################
 # SNS
 ###########################################################################
@@ -224,7 +222,6 @@ Resources:
 
           Ref: AlertPhoneNumber
 
-
 ###########################################################################
 # Kinesis
 ###########################################################################
@@ -247,38 +244,6 @@ Resources:
 
           Ref: Environment
 
-
-###########################################################################
-# QuickSight
-###########################################################################
-
-  QuickSightStack:
-
-    Type: AWS::CloudFormation::Stack
-
-    DependsOn:
-
-      - S3Stack
-
-    Properties:
-
-      TemplateURL: quicksight.yaml
-
-      Parameters:
-
-        Environment:
-
-          Ref: Environment
-
-        AwsAccountId:
-
-          Ref: AwsAccountId
-
-        QuickSightUser:
-
-          Ref: QuickSightUser
-
-
 ###########################################################################
 # Cognito
 ###########################################################################
@@ -295,3 +260,73 @@ Resources:
 
       TemplateURL: cognito-user-pool.yaml
 
+###########################################################################
+# Monitoring
+###########################################################################
+
+  MonitoringStack:
+
+    Type: AWS::CloudFormation::Stack
+
+    DependsOn:
+
+      - ApiGatewayStack
+      - LambdaStack
+      - SNSStack
+      - KinesisStack
+
+    Properties:
+
+      TemplateURL: monitoring.yaml
+
+      Parameters:
+
+        Environment:
+
+          Ref: Environment
+
+        AlarmTopicArn:
+
+          Fn::GetAtt:
+
+            - SNSStack
+
+            - Outputs.CriticalAlertsTopicArn
+
+###########################################################################
+# Outputs
+###########################################################################
+
+Outputs:
+
+  NetworkingStackId:
+
+    Description: Networking Stack ID
+
+    Value:
+
+      Ref: NetworkingStack
+
+  LambdaStackId:
+
+    Description: Lambda Stack ID
+
+    Value:
+
+      Ref: LambdaStack
+
+  ApiGatewayStackId:
+
+    Description: API Gateway Stack ID
+
+    Value:
+
+      Ref: ApiGatewayStack
+
+  MonitoringStackId:
+
+    Description: Monitoring Stack ID
+
+    Value:
+
+      Ref: MonitoringStack

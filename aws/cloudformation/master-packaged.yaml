@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Master CloudFormation stack for the AI-Assisted Threat Detection Dashboard.\n"
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+    - dev
+    - test
+    - prod
+  LambdaCodeBucket:
+    Type: String
+  AlertEmail:
+    Type: String
+  AlertPhoneNumber:
+    Type: String
+    Default: ''
+Resources:
+  NetworkingStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/748b02810593e5bc895e859ca67f8c2d.template
+      Parameters:
+        Environment:
+          Ref: Environment
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - NetworkingStack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/fcff36c9b74d657737ffc6487a3c5352.template
+      Parameters:
+        Environment:
+          Ref: Environment
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - IAMStack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/65b800d58ade8f6fe413c9c3d10e7307.template
+      Parameters:
+        Environment:
+          Ref: Environment
+  DynamoDBStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - IAMStack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/5163ab0db8d3c6e9490386e434d6127b.template
+      Parameters:
+        Environment:
+          Ref: Environment
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - IAMStack
+    - S3Stack
+    - DynamoDBStack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/df8c7c484e5c1d21937598f216150d0c.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        LambdaExecutionRoleArn:
+          Fn::GetAtt:
+          - IAMStack
+          - Outputs.LambdaExecutionRoleArn
+        LambdaCodeBucket:
+          Ref: LambdaCodeBucket
+  ApiGatewayStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - LambdaStack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/22567ed1bf63e01c41f60d4227f9b7f6.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        ThreatEnrichmentLambdaArn:
+          Fn::GetAtt:
+          - LambdaStack
+          - Outputs.ThreatEnrichmentArn
+  SNSStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - LambdaStack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/1f1b2e9d59ca7b93d02eb0bfdc91dc14.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        AlertEmail:
+          Ref: AlertEmail
+        AlertPhoneNumber:
+          Ref: AlertPhoneNumber
+  KinesisStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - S3Stack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/2dc8e05ba46031914e6cc3e7388ce08a.template
+      Parameters:
+        Environment:
+          Ref: Environment
+  CognitoStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - IAMStack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/1ec7364efa140746d8b6824c8eb8a9fd.template
+  MonitoringStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - ApiGatewayStack
+    - LambdaStack
+    - SNSStack
+    - KinesisStack
+    Properties:
+      TemplateURL: 
+        https://s3.eu-north-1.amazonaws.com/ai-threat-cloudformation-deekshitha/8b5b835e1ad10825e25e451ab06f7c35.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        AlarmTopicArn:
+          Fn::GetAtt:
+          - SNSStack
+          - Outputs.CriticalAlertsTopicArn
+Outputs:
+  NetworkingStackId:
+    Description: Networking Stack ID
+    Value:
+      Ref: NetworkingStack
+  LambdaStackId:
+    Description: Lambda Stack ID
+    Value:
+      Ref: LambdaStack
+  ApiGatewayStackId:
+    Description: API Gateway Stack ID
+    Value:
+      Ref: ApiGatewayStack
+  MonitoringStackId:
+    Description: Monitoring Stack ID
+    Value:
+      Ref: MonitoringStack

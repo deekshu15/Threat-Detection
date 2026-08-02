@@ -4,6 +4,10 @@ Description: >
   Amazon S3 infrastructure for the
   AI-Assisted Threat Detection Dashboard.
 
+###########################################################################
+# Parameters
+###########################################################################
+
 Parameters:
 
   Environment:
@@ -15,15 +19,17 @@ Parameters:
     AllowedValues:
 
       - dev
-
       - test
-
       - prod
+
+###########################################################################
+# Resources
+###########################################################################
 
 Resources:
 
 ###########################################################################
-# Raw Security Logs Bucket
+# Raw Logs Bucket
 ###########################################################################
 
   RawLogsBucket:
@@ -34,7 +40,7 @@ Resources:
 
       BucketName:
 
-        Fn::Sub: threat-detection-raw-logs-${Environment}-${AWS::AccountId}
+        Fn::Sub: ai-threat-raw-logs-${Environment}-${AWS::AccountId}
 
       VersioningConfiguration:
 
@@ -57,132 +63,6 @@ Resources:
         IgnorePublicAcls: true
 
         RestrictPublicBuckets: true
-
-
-###########################################################################
-# Processed Logs Bucket
-###########################################################################
-
-  ProcessedLogsBucket:
-
-    Type: AWS::S3::Bucket
-
-    Properties:
-
-      BucketName:
-
-        Fn::Sub: threat-detection-processed-${Environment}-${AWS::AccountId}
-
-      VersioningConfiguration:
-
-        Status: Enabled
-
-      BucketEncryption:
-
-        ServerSideEncryptionConfiguration:
-
-          - ServerSideEncryptionByDefault:
-
-              SSEAlgorithm: AES256
-
-      PublicAccessBlockConfiguration:
-
-        BlockPublicAcls: true
-
-        BlockPublicPolicy: true
-
-        IgnorePublicAcls: true
-
-        RestrictPublicBuckets: true
-
-
-###########################################################################
-# ML Models Bucket
-###########################################################################
-
-  MLModelsBucket:
-
-    Type: AWS::S3::Bucket
-
-    Properties:
-
-      BucketName:
-
-        Fn::Sub: threat-detection-models-${Environment}-${AWS::AccountId}
-
-      VersioningConfiguration:
-
-        Status: Enabled
-
-      BucketEncryption:
-
-        ServerSideEncryptionConfiguration:
-
-          - ServerSideEncryptionByDefault:
-
-              SSEAlgorithm: AES256
-
-      PublicAccessBlockConfiguration:
-
-        BlockPublicAcls: true
-
-        BlockPublicPolicy: true
-
-        IgnorePublicAcls: true
-
-        RestrictPublicBuckets: true
-
-
-###########################################################################
-# Reports Bucket
-###########################################################################
-
-  ReportsBucket:
-
-    Type: AWS::S3::Bucket
-
-    Properties:
-
-      BucketName:
-
-        Fn::Sub: threat-detection-reports-${Environment}-${AWS::AccountId}
-
-      VersioningConfiguration:
-
-        Status: Enabled
-
-      BucketEncryption:
-
-        ServerSideEncryptionConfiguration:
-
-          - ServerSideEncryptionByDefault:
-
-              SSEAlgorithm: AES256
-
-      PublicAccessBlockConfiguration:
-
-        BlockPublicAcls: true
-
-        BlockPublicPolicy: true
-
-        IgnorePublicAcls: true
-
-        RestrictPublicBuckets: true
-
-
-###########################################################################
-# Lifecycle Configuration - Raw Logs
-###########################################################################
-
-  RawLogsLifecycle:
-
-    Type: AWS::S3::Bucket
-
-    Properties:
-
-      BucketName:
-
-        Ref: RawLogsBucket
 
       LifecycleConfiguration:
 
@@ -204,12 +84,23 @@ Resources:
 
             ExpirationInDays: 365
 
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
 
 ###########################################################################
-# Lifecycle Configuration - Processed Logs
+# Processed Logs Bucket
 ###########################################################################
 
-  ProcessedLogsLifecycle:
+  ProcessedLogsBucket:
 
     Type: AWS::S3::Bucket
 
@@ -217,7 +108,29 @@ Resources:
 
       BucketName:
 
-        Ref: ProcessedLogsBucket
+        Fn::Sub: ai-threat-processed-${Environment}-${AWS::AccountId}
+
+      VersioningConfiguration:
+
+        Status: Enabled
+
+      BucketEncryption:
+
+        ServerSideEncryptionConfiguration:
+
+          - ServerSideEncryptionByDefault:
+
+              SSEAlgorithm: AES256
+
+      PublicAccessBlockConfiguration:
+
+        BlockPublicAcls: true
+
+        BlockPublicPolicy: true
+
+        IgnorePublicAcls: true
+
+        RestrictPublicBuckets: true
 
       LifecycleConfiguration:
 
@@ -239,44 +152,113 @@ Resources:
 
             ExpirationInDays: 730
 
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
 
 ###########################################################################
-# Bucket Tags
+# Machine Learning Models Bucket
 ###########################################################################
 
-  RawLogsBucketTags:
+  ModelsBucket:
 
-    Type: AWS::S3::BucketPolicy
+    Type: AWS::S3::Bucket
 
     Properties:
 
-      Bucket:
+      BucketName:
 
-        Ref: RawLogsBucket
+        Fn::Sub: ai-threat-models-${Environment}-${AWS::AccountId}
 
-      PolicyDocument:
+      VersioningConfiguration:
 
-        Version: "2012-10-17"
+        Status: Enabled
 
-        Statement: []
+      BucketEncryption:
 
+        ServerSideEncryptionConfiguration:
 
-  ProcessedLogsBucketTags:
+          - ServerSideEncryptionByDefault:
 
-    Type: AWS::S3::BucketPolicy
+              SSEAlgorithm: AES256
+
+      PublicAccessBlockConfiguration:
+
+        BlockPublicAcls: true
+
+        BlockPublicPolicy: true
+
+        IgnorePublicAcls: true
+
+        RestrictPublicBuckets: true
+
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
+
+###########################################################################
+# Reports Bucket
+###########################################################################
+
+  ReportsBucket:
+
+    Type: AWS::S3::Bucket
 
     Properties:
 
-      Bucket:
+      BucketName:
 
-        Ref: ProcessedLogsBucket
+        Fn::Sub: ai-threat-reports-${Environment}-${AWS::AccountId}
 
-      PolicyDocument:
+      VersioningConfiguration:
 
-        Version: "2012-10-17"
+        Status: Enabled
 
-        Statement: []
+      BucketEncryption:
 
+        ServerSideEncryptionConfiguration:
+
+          - ServerSideEncryptionByDefault:
+
+              SSEAlgorithm: AES256
+
+      PublicAccessBlockConfiguration:
+
+        BlockPublicAcls: true
+
+        BlockPublicPolicy: true
+
+        IgnorePublicAcls: true
+
+        RestrictPublicBuckets: true
+
+      Tags:
+
+        - Key: Project
+
+          Value: AI-Assisted Threat Detection Dashboard
+
+        - Key: Environment
+
+          Value:
+
+            Ref: Environment
 
 ###########################################################################
 # Outputs
@@ -286,35 +268,104 @@ Outputs:
 
   RawLogsBucketName:
 
-    Description: Raw Security Logs Bucket
+    Description: Raw Logs Bucket Name
 
     Value:
 
       Ref: RawLogsBucket
 
+    Export:
+
+      Name:
+
+        Fn::Sub: RawLogsBucket-${Environment}
+
+  RawLogsBucketArn:
+
+    Description: Raw Logs Bucket ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - RawLogsBucket
+
+        - Arn
 
   ProcessedLogsBucketName:
 
-    Description: Processed Security Logs Bucket
+    Description: Processed Logs Bucket Name
 
     Value:
 
       Ref: ProcessedLogsBucket
 
+    Export:
 
-  MLModelsBucketName:
+      Name:
 
-    Description: Machine Learning Models Bucket
+        Fn::Sub: ProcessedLogsBucket-${Environment}
+
+  ProcessedLogsBucketArn:
+
+    Description: Processed Logs Bucket ARN
 
     Value:
 
-      Ref: MLModelsBucket
+      Fn::GetAtt:
 
+        - ProcessedLogsBucket
+
+        - Arn
+
+  ModelsBucketName:
+
+    Description: Models Bucket Name
+
+    Value:
+
+      Ref: ModelsBucket
+
+    Export:
+
+      Name:
+
+        Fn::Sub: ModelsBucket-${Environment}
+
+  ModelsBucketArn:
+
+    Description: Models Bucket ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ModelsBucket
+
+        - Arn
 
   ReportsBucketName:
 
-    Description: Reports Bucket
+    Description: Reports Bucket Name
 
     Value:
 
       Ref: ReportsBucket
+
+    Export:
+
+      Name:
+
+        Fn::Sub: ReportsBucket-${Environment}
+
+  ReportsBucketArn:
+
+    Description: Reports Bucket ARN
+
+    Value:
+
+      Fn::GetAtt:
+
+        - ReportsBucket
+
+        - Arn

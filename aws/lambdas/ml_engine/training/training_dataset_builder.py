@@ -24,8 +24,6 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 def build_dataset(parquet_file, prefix):
 
     df = pd.read_parquet(parquet_file)
-    df = df.head(10000)
-
     X = []
 
     y = []
