@@ -30,6 +30,21 @@ from .constants import REQUIRED_COLUMNS
 logger = logging.getLogger(__name__)
 
 
+# Fields that MUST NOT appear in training input features
+FORBIDDEN_TRAINING_FIELDS = {
+    "label",
+    "original_label",
+    "severity",
+    "cvss_score",
+    "threat_score",
+    "matched_ioc",
+    "mitre_tactic",
+    "mitre_technique_id",
+    "attack_mapping",
+    "ATTACK_MAPPING",
+}
+
+
 # ---------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------
@@ -603,6 +618,22 @@ class FeatureValidator:
         return validated
 
     # -----------------------------------------------------
+    # Training-time leakage checks
+    # -----------------------------------------------------
+
+    def check_forbidden_fields_in_columns(self, columns: List[str]) -> List[str]:
+
+        found: List[str] = []
+
+        for col in columns:
+
+            if str(col).strip().lower() in FORBIDDEN_TRAINING_FIELDS:
+
+                found.append(col)
+
+        return found
+
+    # -----------------------------------------------------
     # Statistics
     # -----------------------------------------------------
 
@@ -682,6 +713,11 @@ def validation_summary(
 ) -> Dict:
 
     return _validator.validation_summary(events)
+
+
+def check_forbidden_training_columns(columns: List[str]) -> List[str]:
+
+    return _validator.check_forbidden_fields_in_columns(columns)
 
 
 # ---------------------------------------------------------

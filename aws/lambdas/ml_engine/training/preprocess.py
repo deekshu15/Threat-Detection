@@ -159,27 +159,42 @@ class DatasetPreprocessor:
         # Save
         # ---------------------------------------------
 
-        train_df.to_parquet(
+        # Save a full processed dataset CSV for evaluation and auditing
+        # purposes (contains the original Label). This file is NOT used
+        # by the training dataset builder to avoid leakage.
+        full_processed = df.copy()
+        full_processed.to_csv(
+            PROCESSED_DIR / "processed_dataset.csv",
+            index=False,
+        )
+
+        # Save train/test partitions WITHOUT the original Label column
+        # to ensure the training pipeline cannot accidentally access
+        # the ground-truth labels during feature generation.
+        train_df_no_label = train_df.drop(columns=["Label"], errors="ignore")
+        test_df_no_label = test_df.drop(columns=["Label"], errors="ignore")
+
+        train_df_no_label.to_parquet(
             PROCESSED_DIR / "train.parquet",
             index=False,
         )
 
-        test_df.to_parquet(
+        test_df_no_label.to_parquet(
             PROCESSED_DIR / "test.parquet",
             index=False,
         )
 
+        # Save the label encoder for later decoding/evaluation
         joblib.dump(
-
             encoder,
-
             PROCESSED_DIR / "label_encoder.pkl",
-
         )
 
         print()
 
         print("Saved:")
+
+        print(PROCESSED_DIR / "processed_dataset.csv")
 
         print(PROCESSED_DIR / "train.parquet")
 

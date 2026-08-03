@@ -209,101 +209,94 @@ BUSINESS_END = 18
 # =========================================================
 
 FEATURE_COLUMNS = [
-
     # Temporal
-
     "hour",
-
     "minute",
-
     "day",
-
     "weekday",
-
     "month",
-
     "quarter",
-
     "is_weekend",
-
     "is_business_hours",
 
     # Network
-
     "protocol_encoded",
-
     "src_internal",
-
     "dest_internal",
-
+    "src_private",
+    "dest_private",
+    "src_loopback",
+    "dest_loopback",
     "same_subnet",
-
+    "network_direction",
+    "ip_version",
+    "src_port_category",
+    "dest_port_category",
+    "src_well_known",
+    "dest_well_known",
+    "privileged_src_port",
+    "privileged_dest_port",
     "src_port",
-
     "dest_port",
 
-    # Threat
-
-    "severity_encoded",
-
-    "cvss_normalized",
-
-    "ioc_flag",
-
-    "mitre_weight",
-
-    "asset_score",
-
-    "threat_score",
-
     # Behavioral
-
     "user_event_count",
-
     "host_event_count",
 
-    "failed_login_count",
-
-    "successful_login_count",
-
-    "user_risk",
-
-    "host_risk",
-
     # Statistical
-
     "rolling_event_count",
 
-    "attack_frequency",
-
-    "average_threat_score",
-
+    # Flow-derived (CICIDS2017) - computed from raw flow attributes
+    "flow_duration_seconds",
+    "total_packets",
+    "total_bytes",
+    "fwd_packets",
+    "bwd_packets",
+    "fwd_bytes",
+    "bwd_bytes",
+    "packets_per_second",
+    "bytes_per_second",
+    "avg_packet_size",
+    "fwd_bwd_packet_ratio",
+    "fwd_bwd_byte_ratio",
+    "fwd_packet_len_mean",
+    "bwd_packet_len_mean",
+    "flow_iat_mean",
+    "packet_length_mean",
+    "packet_length_std",
+    "inter_arrival_time_mean",
+    # TCP flag counts (optional if present)
+    "tcp_syn_count",
+    "tcp_ack_count",
+    "tcp_rst_count",
+    "tcp_fin_count",
+    "tcp_psh_count",
+    "tcp_urg_count",
 ]
 
 # =========================================================
 # Output Column
 # =========================================================
 
-TARGET_COLUMN = "label"
+TARGET_COLUMN = "Target"
 
 # =========================================================
 # Numerical Features
 # =========================================================
 
+# Numeric features: protocol_encoded is categorical
 NUMERIC_FEATURES = [
-
     feature
-
     for feature in FEATURE_COLUMNS
-
     if feature not in {
-
         "protocol_encoded",
-
-        "severity_encoded",
-
+        "network_direction",
+        "ip_version",
+        "src_port_category",
+        "dest_port_category",
+        "src_well_known",
+        "dest_well_known",
     }
-
 ]
 
 # =========================================================
@@ -311,9 +304,11 @@ NUMERIC_FEATURES = [
 # =========================================================
 
 CATEGORICAL_FEATURES = [
-
     "protocol_encoded",
-
-    "severity_encoded",
-
+    "network_direction",
+    "ip_version",
+    "src_port_category",
+    "dest_port_category",
+    "src_well_known",
+    "dest_well_known",
 ]

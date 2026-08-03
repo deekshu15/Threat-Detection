@@ -7,9 +7,13 @@ import pandas as pd
 
 from .event_generator import generate_event
 
-# IMPORTANT:
-# Adjust this import if your feature pipeline exposes a different function.
-from feature_engineering.feature_pipeline import process_event
+# Import the feature pipeline module so we can reset stateful components
+import feature_engineering.feature_pipeline as pipeline
+
+# Validator check for forbidden training columns
+from feature_engineering.validator import (
+    check_forbidden_training_columns,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -24,6 +28,28 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 def build_dataset(parquet_file, prefix):
 
     df = pd.read_parquet(parquet_file)
+    # Safety: ensure no forbidden label-derived columns exist in the
+    # training partition. This prevents accidental leakage.
+    forbidden = check_forbidden_training_columns(list(df.columns))
+
+    if forbidden:
+        raise RuntimeError(
+            "Forbidden training columns present: " + ", ".join(forbidden)
+        )
+    # If a timestamp column exists, ensure chronological ordering so that
+    # behavioural/statistical features reflect past events only (no peeking)
+    ts_col = None
+    for cand in ("timestamp", "Timestamp", "time", "Time"):
+        if cand in df.columns:
+            ts_col = cand
+            break
+
+    if ts_col is not None:
+        try:
+            df[ts_col] = pd.to_datetime(df[ts_col])
+            df = df.sort_values(by=ts_col, ascending=True).reset_index(drop=True)
+        except Exception:
+            print("Warning: failed to parse/sort timestamps; proceeding without chronological ordering.")
     X = []
 
     y = []
@@ -33,11 +59,20 @@ def build_dataset(parquet_file, prefix):
     print(f"\nBuilding {prefix} dataset")
     print(f"Rows: {total:,}")
 
+    # Reset pipeline state to avoid leakage from prior runs (e.g.,
+    # behavioural/statistical history). This ensures train/test
+    # partitions are processed independently.
+    try:
+        pipeline.reset_pipeline()
+    except Exception:
+        # If reset is not available, continue but warn
+        print("Warning: feature pipeline reset unavailable.")
+
     for index, (_, row) in enumerate(df.iterrows(), start=1):
 
         event = generate_event(row)
 
-        result = process_event(event)
+        result = pipeline.process_event(event)
 
         vector = result["vector"]
 

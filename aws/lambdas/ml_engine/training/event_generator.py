@@ -19,174 +19,15 @@ PROTOCOL_MAP = {
     17: "UDP",
 }
 
-ATTACK_MAPPING = {
-
-    "BENIGN": {
-        "severity": "LOW",
-        "cvss": 1.5,
-        "threat": 10,
-        "category": "Normal",
-        "tactic": "None",
-        "technique": "None",
-        "asset": "LOW",
-    },
-
-    "PortScan": {
-        "severity": "MEDIUM",
-        "cvss": 5.5,
-        "threat": 60,
-        "category": "Reconnaissance",
-        "tactic": "Discovery",
-        "technique": "T1046",
-        "asset": "MEDIUM",
-    },
-
-    "DDoS": {
-        "severity": "CRITICAL",
-        "cvss": 9.8,
-        "threat": 98,
-        "category": "Network Attack",
-        "tactic": "Impact",
-        "technique": "T1498",
-        "asset": "CRITICAL",
-    },
-
-    "DoS Hulk": {
-        "severity": "HIGH",
-        "cvss": 9.3,
-        "threat": 95,
-        "category": "Network Attack",
-        "tactic": "Impact",
-        "technique": "T1499",
-        "asset": "HIGH",
-    },
-
-    "DoS GoldenEye": {
-        "severity": "HIGH",
-        "cvss": 8.7,
-        "threat": 90,
-        "category": "Network Attack",
-        "tactic": "Impact",
-        "technique": "T1499",
-        "asset": "HIGH",
-    },
-
-    "DoS slowloris": {
-        "severity": "HIGH",
-        "cvss": 8.8,
-        "threat": 88,
-        "category": "Application Attack",
-        "tactic": "Impact",
-        "technique": "T1499",
-        "asset": "HIGH",
-    },
-
-    "DoS Slowhttptest": {
-        "severity": "HIGH",
-        "cvss": 8.6,
-        "threat": 86,
-        "category": "Application Attack",
-        "tactic": "Impact",
-        "technique": "T1499",
-        "asset": "HIGH",
-    },
-
-    "Bot": {
-        "severity": "HIGH",
-        "cvss": 8.5,
-        "threat": 80,
-        "category": "Malware",
-        "tactic": "Command and Control",
-        "technique": "T1071",
-        "asset": "HIGH",
-    },
-
-    "FTP-Patator": {
-        "severity": "HIGH",
-        "cvss": 7.8,
-        "threat": 72,
-        "category": "Credential Attack",
-        "tactic": "Credential Access",
-        "technique": "T1110",
-        "asset": "MEDIUM",
-    },
-
-    "SSH-Patator": {
-        "severity": "HIGH",
-        "cvss": 8.0,
-        "threat": 74,
-        "category": "Credential Attack",
-        "tactic": "Credential Access",
-        "technique": "T1110",
-        "asset": "MEDIUM",
-    },
-
-    "Heartbleed": {
-        "severity": "CRITICAL",
-        "cvss": 10.0,
-        "threat": 100,
-        "category": "Exploitation",
-        "tactic": "Initial Access",
-        "technique": "T1190",
-        "asset": "CRITICAL",
-    },
-
-    "Infiltration": {
-        "severity": "CRITICAL",
-        "cvss": 9.8,
-        "threat": 96,
-        "category": "Intrusion",
-        "tactic": "Lateral Movement",
-        "technique": "T1021",
-        "asset": "CRITICAL",
-    },
-
-    "Web Attack - Brute Force": {
-        "severity": "HIGH",
-        "cvss": 8.5,
-        "threat": 84,
-        "category": "Web Attack",
-        "tactic": "Credential Access",
-        "technique": "T1110",
-        "asset": "HIGH",
-    },
-
-    "Web Attack - XSS": {
-        "severity": "HIGH",
-        "cvss": 8.0,
-        "threat": 82,
-        "category": "Web Attack",
-        "tactic": "Execution",
-        "technique": "T1059",
-        "asset": "HIGH",
-    },
-
-    "Web Attack - SQL Injection": {
-        "severity": "CRITICAL",
-        "cvss": 9.8,
-        "threat": 97,
-        "category": "Web Attack",
-        "tactic": "Execution",
-        "technique": "T1190",
-        "asset": "CRITICAL",
-    }
-}
-
 class EventGenerator:
 
     def generate(self, row):
 
-        label = (
-            str(row["Label"])
-            .replace("�", "-")
-            .replace("Sql", "SQL")
-            .strip()
-        )
-
-        attack = ATTACK_MAPPING.get(
-            label,
-            ATTACK_MAPPING["BENIGN"]
-        )
+        # IMPORTANT: For training we must not leak the ground-truth label
+        # into the generated event fields. This training event generator
+        # produces only values that are available at inference time and
+        # derived from raw flow attributes. We deliberately avoid using
+        # the original dataset `Label` to populate enrichment fields.
 
         protocol_number = int(row.get("Protocol", 6))
 
@@ -205,11 +46,34 @@ class EventGenerator:
             f"{row.name % 250}"
         )
 
-        return {
+        # Use conservative defaults that do NOT encode the label.
+        # These values are intentionally neutral and only use flow-level
+        # information (or safe defaults) so the model cannot learn the
+        # ground-truth from engineered features.
+
+        # Prefer dataset-provided timestamps when available to ensure
+        # temporal features are computed correctly and do not leak
+        # future information. Try multiple common timestamp column
+        # names (case-sensitive) and fall back to now().
+        ts = None
+        for key in ("timestamp", "Timestamp", "time", "Time"):
+            if key in row:
+                ts = row.get(key)
+                break
+
+        if ts is not None:
+            try:
+                ts = pd.to_datetime(ts)
+            except Exception:
+                ts = datetime.now()
+        else:
+            ts = datetime.now()
+
+        event = {
 
             "event_id": f"CICIDS-{row.name}",
 
-            "timestamp": datetime.now(),
+            "timestamp": ts,
 
             "src_ip": src_ip,
 
@@ -225,30 +89,51 @@ class EventGenerator:
 
             "protocol": protocol,
 
-            "severity": attack["severity"],
+            # Do NOT derive severity from the ground-truth label. Use a
+            # neutral value that will be validated by the feature pipeline.
+            "severity": "UNKNOWN",
 
-            "event_category": attack["category"],
+            # Event category must be present for validator, but set to
+            # a non-informative default.
+            "event_category": "Unknown",
 
             "host": f"host-{row.name % 100}",
 
             "user": f"user-{row.name % 50}",
 
-            "asset_criticality": attack["asset"],
+            # Asset criticality and threat indicators must exist but must
+            # not leak the label. Use UNKNOWN / zero defaults.
+            "asset_criticality": "UNKNOWN",
 
-            "threat_score": attack["threat"],
+            "threat_score": 0,
 
-            "matched_ioc": attack["threat"] >= 80,
+            "matched_ioc": False,
 
-            "mitre_tactic": attack["tactic"],
+            "mitre_tactic": None,
 
-            "mitre_technique_id": attack["technique"],
+            "mitre_technique_id": None,
 
-            "cvss_score": attack["cvss"],
+            "cvss_score": None,
 
-            "metadata": {
-                "original_label": label
-            },
+            "metadata": {},
         }
+
+        # Merge raw row columns into the event for flow-feature extraction.
+        # Exclude Label/Target to avoid reintroducing ground-truth.
+        try:
+            raw = dict(row)
+        except Exception:
+            raw = {}
+
+        for k, v in raw.items():
+            if str(k).lower() in {"label", "target", "original_label"}:
+                continue
+            # Do not override core fields we explicitly set above
+            if k not in event:
+                event[k] = v
+
+        return event
+
 
 _generator = EventGenerator()
 
