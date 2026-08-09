@@ -30,7 +30,7 @@ class Normalizer:
             Normalized DataFrame.
         """
 
-        # Detect dataset type
+        # Detect dataset type using dataset path (Lambda pipeline contract)
         dataset_type = DatasetDetector.detect(dataset_path)
 
         # Create processor

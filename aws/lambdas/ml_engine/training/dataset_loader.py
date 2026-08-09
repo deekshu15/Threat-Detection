@@ -6,10 +6,21 @@ Loads and combines CICIDS2017 CSV datasets.
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
+import logging
 from pathlib import Path
 from typing import List
 
 import pandas as pd
+
+
+logger = logging.getLogger(__name__)
+
+
+def _load_csv(path: Path) -> pd.DataFrame:
+    dataframe = pd.read_csv(path, low_memory=False)
+    dataframe["source_file"] = path.name
+    return dataframe
 
 
 class DatasetLoader:
@@ -43,20 +54,11 @@ class DatasetLoader:
 
         csv_files = self.discover_csv_files()
 
-        dataframes = []
+        max_workers = min(4, max(1, len(csv_files)))
+        logger.info("Loading %s CSV files using %s workers", len(csv_files), max_workers)
 
-        for file in csv_files:
-
-            print(f"Loading: {file.name}")
-
-            df = pd.read_csv(
-                file,
-                low_memory=False,
-            )
-
-            df["source_file"] = file.name
-
-            dataframes.append(df)
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            dataframes = list(executor.map(_load_csv, csv_files))
 
         merged = pd.concat(
             dataframes,
@@ -65,13 +67,9 @@ class DatasetLoader:
         # Remove leading/trailing whitespace from all column names
         merged.columns = merged.columns.str.strip()
 
-        print()
-
-        print(f"Loaded {len(csv_files)} files")
-
-        print(f"Total Rows : {len(merged):,}")
-
-        print(f"Columns    : {len(merged.columns)}")
+        logger.info("Loaded %s files", len(csv_files))
+        logger.info("Total rows: %s", f"{len(merged):,}")
+        logger.info("Columns: %s", len(merged.columns))
 
         return merged
 

@@ -2,13 +2,14 @@
 
 Overview
 --------
-This document describes the training pipeline for the AI-Assisted Threat Detection Dashboard. The training pipeline ingests raw CICIDS2017 CSVs, preprocesses the data, engineers flow/temporal/network/behavioral/statistical features, builds training datasets, trains a RandomForest classifier, and exports model artifacts and evaluation reports.
+This document describes the training pipeline for the AI-Assisted Threat Detection Dashboard. The training pipeline ingests raw CICIDS2017 CSVs, preprocesses the data, engineers flow/temporal/network/behavioral/statistical features, builds training datasets, benchmarks multiple classifiers, tunes Random Forest, and exports model artifacts, evaluation reports, and explainability outputs.
 
 Key Principles
 --------------
 - No label leakage: ground-truth `Label` is never present during feature engineering for training. Train/test partitions are written without `Label`.
 - Deterministic feature engineering: all features derive only from raw flow attributes or past events (chronological processing).
 - Stateful components (behavioral/statistical) are reset between partitions.
+- The shared feature contract is validated before training and again before model persistence.
 
 Files of interest
 -----------------
@@ -17,7 +18,8 @@ Files of interest
 - `aws/lambdas/feature_engineering/flow_features.py` — new: computes flow-derived features (duration, packets/sec, bytes/sec, avg packet size, forward/backward counts/ratios, TCP flag counts, etc.).
 - `aws/lambdas/feature_engineering/feature_pipeline.py` — pipeline now integrates flow features alongside network/temporal/behavioral/statistical features and exposes `reset_pipeline()`.
 - `aws/lambdas/ml_engine/training/training_dataset_builder.py` — builds X/y arrays; ensures chronological ordering when timestamp present and checks for forbidden columns.
-- `aws/lambdas/ml_engine/training/train_model.py` — trains RandomForest, performs leakage detection, drops near-constant features, writes `risk_classifier.pkl`, `feature_importance.csv`, `training_report.json`, and `active_features.json`.
+- `aws/lambdas/ml_engine/training/train_model.py` — benchmarks RandomForest, ExtraTrees, and optional gradient-boosting libraries when available; runs RandomizedSearchCV for RandomForest; performs leakage detection; generates cross-validation, explainability, and evaluation artifacts; and writes `best_model.pkl`, `risk_classifier.pkl`, `benchmark_results.csv`, `benchmark_report.json`, `cross_validation.json`, `best_params.json`, `feature_importance.csv`, `training_report.json`, and `active_features.json`.
+- `aws/lambdas/ml_engine/training/model_manager.py` — saves, versions, and validates model artifacts, active features, metadata, and label encoders.
 
 Feature List (final)
 --------------------
@@ -53,7 +55,7 @@ python aws/lambdas/ml_engine/training/preprocess.py
 python aws/lambdas/ml_engine/training/training_dataset_builder.py
 ```
 
-3. Train model:
+3. Train model and export artifacts:
 
 ```powershell
 python aws/lambdas/ml_engine/training/train_model.py
@@ -64,8 +66,15 @@ Artifacts produced
 - `aws/lambdas/ml_engine/training/datasets/processed/train.parquet`
 - `aws/lambdas/ml_engine/training/datasets/processed/test.parquet`
 - `aws/lambdas/ml_engine/training/saved_models/X_train.npy`, `y_train.npy`, etc.
+- `aws/lambdas/ml_engine/training/saved_models/best_model.pkl`
 - `aws/lambdas/ml_engine/training/saved_models/risk_classifier.pkl`
+- `aws/lambdas/ml_engine/training/saved_models/benchmark_results.csv`
+- `aws/lambdas/ml_engine/training/saved_models/benchmark_report.json`
+- `aws/lambdas/ml_engine/training/saved_models/best_params.json`
+- `aws/lambdas/ml_engine/training/saved_models/cross_validation.json`
 - `aws/lambdas/ml_engine/training/saved_models/feature_importance.csv`
+- `aws/lambdas/ml_engine/training/saved_models/evaluation/`
+- `aws/lambdas/ml_engine/training/saved_models/explainability/`
 - `aws/lambdas/ml_engine/training/saved_models/training_report.json`
 - `aws/lambdas/ml_engine/training/saved_models/active_features.json`
 
@@ -73,5 +82,5 @@ Notes & Next Steps
 ------------------
 - Consider switching to a time-based (temporal) train/test split for production when behavioral/statistical features are used.
 - Replace singleton in-memory behavioral/statistics with deterministic windowed aggregations if parallel processing is required.
-- Optionally add hyperparameter tuning (GridSearch/RandomSearch) and LightGBM/XGBoost comparison.
+- Expand the optional benchmark set by installing the extra ML packages listed in training requirements.
 

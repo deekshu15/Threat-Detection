@@ -18,6 +18,7 @@ Pipeline
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import joblib
@@ -43,6 +44,8 @@ PROCESSED_DIR.mkdir(
     exist_ok=True,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ==========================================================
 # Preprocessor
@@ -52,15 +55,11 @@ class DatasetPreprocessor:
 
     def preprocess(self):
 
-        print("=" * 60)
-        print("Loading Dataset")
-        print("=" * 60)
+        logger.info("Loading dataset")
 
         df = load_dataset()
 
-        print()
-
-        print("Original Shape:", df.shape)
+        logger.info("Original shape: %s", df.shape)
 
         # ---------------------------------------------
         # Strip whitespace
@@ -74,7 +73,7 @@ class DatasetPreprocessor:
 
         duplicates = df.duplicated().sum()
 
-        print("Duplicate Rows:", duplicates)
+        logger.info("Duplicate rows: %s", duplicates)
 
         df = df.drop_duplicates()
 
@@ -149,11 +148,8 @@ class DatasetPreprocessor:
 
         )
 
-        print()
-
-        print("Train:", train_df.shape)
-
-        print("Test :", test_df.shape)
+        logger.info("Train shape: %s", train_df.shape)
+        logger.info("Test shape: %s", test_df.shape)
 
         # ---------------------------------------------
         # Save
@@ -190,21 +186,11 @@ class DatasetPreprocessor:
             PROCESSED_DIR / "label_encoder.pkl",
         )
 
-        print()
-
-        print("Saved:")
-
-        print(PROCESSED_DIR / "processed_dataset.csv")
-
-        print(PROCESSED_DIR / "train.parquet")
-
-        print(PROCESSED_DIR / "test.parquet")
-
-        print(PROCESSED_DIR / "label_encoder.pkl")
-
-        print()
-
-        print("Finished.")
+        logger.info("Saved %s", PROCESSED_DIR / "processed_dataset.csv")
+        logger.info("Saved %s", PROCESSED_DIR / "train.parquet")
+        logger.info("Saved %s", PROCESSED_DIR / "test.parquet")
+        logger.info("Saved %s", PROCESSED_DIR / "label_encoder.pkl")
+        logger.info("Finished preprocessing")
 
         return train_df, test_df
 

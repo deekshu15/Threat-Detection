@@ -1,11 +1,66 @@
-import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
-import { Box, Button, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  LinearProgress,
+  Snackbar,
+  Typography,
+} from "@mui/material";
+
+import ingestionService from "./services/ingestionService";
+
+type UploadNotice = {
+  message: string;
+  severity: "success" | "error";
+};
 
 function DataIngestionPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [notice, setNotice] = useState<UploadNotice | null>(null);
+
+  const handleUpload = async (file: File) => {
+    console.log("Uploading...");
+    setIsUploading(true);
+    setUploadProgress(0);
+    setNotice(null);
+
+    try {
+      const response = await ingestionService.upload(file, setUploadProgress);
+      setNotice({
+        severity: "success",
+        message: response.message || "Dataset uploaded successfully.",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "The file could not be uploaded.";
+      setNotice({ severity: "error", message });
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    console.log("File selected");
+    console.log(file);
+    setSelectedFile(file);
+    void handleUpload(file);
+  };
 
   return (
     <Box
@@ -28,7 +83,11 @@ function DataIngestionPage() {
         </Typography>
 
         <Box
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => {
+            if (!isUploading) {
+              fileInputRef.current?.click();
+            }
+          }}
           sx={{
             minHeight: { xs: 190, md: 156 },
             borderRadius: 0,
@@ -57,20 +116,57 @@ function DataIngestionPage() {
             <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.7 }}>
               or click to browse
             </Typography>
-            <input ref={fileInputRef} type="file" accept=".csv,.json" hidden />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.json"
+              hidden
+              disabled={isUploading}
+              onChange={handleFileSelect}
+            />
             <Button
               variant="contained"
+              disabled={isUploading}
               onClick={(event) => {
                 event.stopPropagation();
                 fileInputRef.current?.click();
               }}
               sx={{ mt: 2.2, minWidth: 140, whiteSpace: "nowrap" }}
             >
-              Browse Files
+              {isUploading ? "Uploading..." : "Browse Files"}
             </Button>
+
+            {selectedFile && (
+              <Typography variant="body2" sx={{ color: "text.secondary", mt: 1.5 }}>
+                {selectedFile.name}
+              </Typography>
+            )}
+
+            {isUploading && (
+              <Box sx={{ width: "100%", mt: 2 }}>
+                <LinearProgress
+                  variant={uploadProgress > 0 ? "determinate" : "indeterminate"}
+                  value={uploadProgress}
+                />
+              </Box>
+            )}
           </Box>
         </Box>
       </Box>
+
+      <Snackbar
+        open={notice !== null}
+        autoHideDuration={5000}
+        onClose={() => setNotice(null)}
+      >
+        <Alert
+          severity={notice?.severity || "success"}
+          onClose={() => setNotice(null)}
+          variant="filled"
+        >
+          {notice?.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

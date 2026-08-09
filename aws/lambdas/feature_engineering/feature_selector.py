@@ -19,6 +19,8 @@ AI Threat Detection Dashboard
 from __future__ import annotations
 
 from typing import Dict, List
+import json
+from pathlib import Path
 
 from .constants import FEATURE_COLUMNS
 # ---------------------------------------------------------
@@ -34,7 +36,44 @@ class FeatureSelector:
 
     def __init__(self):
 
-        self.feature_order = FEATURE_COLUMNS.copy()
+        # Prefer an active_features.json next to deployed models if present.
+        # This allows inference to use the exact feature ordering the model
+        # was trained with (avoids feature-count mismatch).
+        try:
+            models_active = (
+                Path(__file__).resolve().parent.parent
+                / "ml_engine"
+                / "models"
+                / "active_features.json"
+            )
+            if models_active.exists():
+                payload = json.loads(models_active.read_text())
+                names = payload.get("feature_names")
+                if names and isinstance(names, list):
+                    self.feature_order = names.copy()
+                else:
+                    self.feature_order = FEATURE_COLUMNS.copy()
+            else:
+                # Try the training saved_models copy as a fallback (common in dev).
+                training_active = (
+                    Path(__file__).resolve().parent.parent
+                    / "ml_engine"
+                    / "training"
+                    / "saved_models"
+                    / "active_features.json"
+                )
+                if training_active.exists():
+                    payload = json.loads(training_active.read_text())
+                    names = payload.get("feature_names")
+                    if names and isinstance(names, list):
+                        self.feature_order = names.copy()
+                    else:
+                        self.feature_order = FEATURE_COLUMNS.copy()
+                else:
+                    self.feature_order = FEATURE_COLUMNS.copy()
+        except Exception:
+            # On any failure fall back to the canonical FEATURE_COLUMNS
+            self.feature_order = FEATURE_COLUMNS.copy()
 
     # -----------------------------------------------------
     # Merge Dictionaries

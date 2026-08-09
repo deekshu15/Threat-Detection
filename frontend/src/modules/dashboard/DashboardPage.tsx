@@ -1,125 +1,350 @@
-import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
-import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
-import LanguageOutlinedIcon from "@mui/icons-material/LanguageOutlined";
-import WifiRoundedIcon from "@mui/icons-material/WifiRounded";
-import { Box, Grid, Stack, Typography } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import React, {
+  useEffect,
+  useState,
+} from "react";
 
-import GlassSurface from "../../components/ui/GlassSurface";
+import StatCard from "./components/StatCard";
+import AttackDistribution from "./components/AttackDistribution";
+import SeverityChart from "./components/SeverityChart";
+import ThreatTrend from "./components/ThreatTrend";
+import RecentEventsTable from "./components/RecentEventsTable";
 
-const actionCards = [
-  {
-    title: "Upload Data",
-    detail: "CSV or JSON files",
-    icon: CloudUploadOutlinedIcon,
-  },
-  {
-    title: "Connect API",
-    detail: "Live threat feed",
-    icon: WifiRoundedIcon,
-  },
-  {
-    title: "Demo Mode",
-    detail: "Use sample data",
-    icon: LanguageOutlinedIcon,
-  },
-];
+import {
+  getDashboardData,
+  type DashboardData,
+} from "./services/dashboardService";
 
-function DashboardPage() {
-  const navigate = useNavigate();
+export default function DashboardPage() {
+  const [data, setData] =
+    useState<DashboardData | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  async function loadDashboard() {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const result =
+        await getDashboardData();
+
+      setData(result);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load dashboard data."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={pageStyle}>
+        <div style={loadingStyle}>
+          Loading threat intelligence dashboard...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={pageStyle}>
+        <div style={emptyContainer}>
+          <div style={emptyIcon}>🛡</div>
+
+          <h1 style={titleStyle}>
+            No Threat Data Available
+          </h1>
+
+          <p style={descriptionStyle}>
+            {error}
+          </p>
+
+          <button
+            onClick={loadDashboard}
+            style={buttonStyle}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const {
+    metadata,
+    summary,
+    severity,
+    attack_distribution,
+    trend,
+    recent_events,
+  } = data;
 
   return (
-    <Box
-      sx={{
-        minHeight: "calc(100vh - 180px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        px: { xs: 0, md: 2 },
-        py: { xs: 2, md: 4 },
-      }}
-    >
-      <Box sx={{ width: "100%", maxWidth: 930, textAlign: "center" }}>
-        <Stack spacing={2.8} sx={{ alignItems: "center" }}>
-          <Box
-            sx={{
-              width: 72,
-              height: 72,
-              borderRadius: 4,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              bgcolor: "rgba(15, 23, 42, 0.36)",
-              border: "1px solid rgba(45, 212, 191, 0.26)",
-              boxShadow: "0 18px 40px rgba(2, 8, 23, 0.28)",
-            }}
-          >
-            <ShieldOutlinedIcon sx={{ fontSize: 38, color: "#22d3ee" }} />
-          </Box>
+    <div style={pageStyle}>
+      {/* HEADER */}
 
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: "1.55rem", sm: "1.9rem", md: "2.15rem" } }}>
-              Welcome to Cyber Threat Intelligence
-            </Typography>
-            <Typography sx={{ color: "text.secondary", maxWidth: 640, mx: "auto", lineHeight: 1.7, fontSize: { xs: "0.95rem", md: "1rem" } }}>
-              To view the dashboard, you need to load threat data first. Upload a data file or connect a live API feed.
-            </Typography>
-          </Box>
+      <div style={headerRow}>
+        <div>
+          <div style={breadcrumb}>
+            Security Operations
+            <span> / </span>
+            Dashboard
+          </div>
 
-          <Grid container spacing={2.2} sx={{ pt: 1, width: "100%", justifyContent: "center" }}>
-            {actionCards.map((card) => {
-              const Icon = card.icon;
-              const destination = card.title === "Upload Data" ? "/static-data" : card.title === "Connect API" ? "/live-api" : "/analytics";
+          <h1 style={titleStyle}>
+            Cyber Threat Intelligence
+            Dashboard
+          </h1>
 
-              return (
-                <Grid key={card.title} size={{ xs: 12, sm: 4 }}>
-                  <GlassSurface
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => navigate(destination)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        navigate(destination);
-                      }
-                    }}
-                    sx={{
-                      p: { xs: 2.4, md: 2.8 },
-                      height: "100%",
-                      minHeight: 122,
-                      width: "100%",
-                      maxWidth: 180,
-                      mx: "auto",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 0.9,
-                      textAlign: "center",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      cursor: "pointer",
-                      transition: "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
-                      "&:hover": {
-                        transform: "translateY(-4px)",
-                        boxShadow: "0 24px 48px rgba(2, 8, 23, 0.28)",
-                        borderColor: "rgba(45, 212, 191, 0.24)",
-                      },
-                    }}
-                  >
-                    <Icon sx={{ fontSize: 34, color: card.title === "Connect API" ? "#7c3aed" : card.title === "Demo Mode" ? "#22c55e" : "#22d3ee" }} />
-                    <Typography sx={{ fontWeight: 700, fontSize: "0.98rem" }}>{card.title}</Typography>
-                    <Typography variant="caption" sx={{ color: "text.secondary", lineHeight: 1.3 }}>
-                      {card.detail}
-                    </Typography>
-                  </GlassSurface>
-                </Grid>
-              );
-            })}
-          </Grid>
-        </Stack>
-      </Box>
-    </Box>
+          <p style={descriptionStyle}>
+            Real-time security analysis from the
+            uploaded threat dataset.
+          </p>
+        </div>
+
+        <button
+          onClick={loadDashboard}
+          style={refreshButton}
+        >
+          Refresh
+        </button>
+      </div>
+
+      {/* DATASET INFO */}
+
+      <div style={datasetBanner}>
+        <div>
+          <strong>Dataset:</strong>{" "}
+          {metadata.filename}
+        </div>
+
+        <div>
+          <strong>Type:</strong>{" "}
+          {metadata.dataset_type}
+        </div>
+
+        <div>
+          <strong>Rows:</strong>{" "}
+          {metadata.rows.toLocaleString()}
+        </div>
+
+        <div>
+          <strong>Columns:</strong>{" "}
+          {metadata.columns.toLocaleString()}
+        </div>
+      </div>
+
+      {/* STATISTICS */}
+
+      <div style={statsGrid}>
+        <StatCard
+          title="Total Events"
+          value={summary.total_events.toLocaleString()}
+          subtitle="Processed security events"
+        />
+
+        <StatCard
+          title="Threats Detected"
+          value={summary.threat_events.toLocaleString()}
+          subtitle={`${summary.threat_percentage}% of events`}
+        />
+
+        <StatCard
+          title="Benign Events"
+          value={summary.benign_events.toLocaleString()}
+          subtitle="Normal / benign activity"
+        />
+
+        <StatCard
+          title="Threat Rate"
+          value={`${summary.threat_percentage}%`}
+          subtitle="Based on dataset labels"
+        />
+      </div>
+
+      {/* CHARTS */}
+
+      <div style={twoColumnGrid}>
+        <section style={panelStyle}>
+          <h2 style={panelTitle}>
+            Attack Distribution
+          </h2>
+
+          <AttackDistribution
+            data={attack_distribution}
+          />
+        </section>
+
+        <section style={panelStyle}>
+          <h2 style={panelTitle}>
+            Severity Distribution
+          </h2>
+
+          <SeverityChart
+            data={severity}
+          />
+        </section>
+      </div>
+
+      {/* TREND */}
+
+      <section style={panelStyle}>
+        <h2 style={panelTitle}>
+          Event Trend
+        </h2>
+
+        <ThreatTrend data={trend} />
+      </section>
+
+      {/* RECENT EVENTS */}
+
+      <section style={panelStyle}>
+        <h2 style={panelTitle}>
+          Recent Security Events
+        </h2>
+
+        <RecentEventsTable
+          data={recent_events}
+        />
+      </section>
+    </div>
   );
 }
 
-export default DashboardPage;
+/* ---------------------------------------------------------
+   STYLES
+--------------------------------------------------------- */
+
+const pageStyle: React.CSSProperties = {
+  minHeight: "100%",
+  padding: "30px 36px 60px",
+  background: "#0b0f14",
+  color: "#ffffff",
+};
+
+const headerRow: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 20,
+  marginBottom: 24,
+};
+
+const breadcrumb: React.CSSProperties = {
+  color: "#788493",
+  fontSize: 13,
+  marginBottom: 12,
+};
+
+const titleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 30,
+  fontWeight: 700,
+};
+
+const descriptionStyle: React.CSSProperties = {
+  color: "#9ca7b5",
+  marginTop: 8,
+  fontSize: 14,
+};
+
+const refreshButton: React.CSSProperties = {
+  border: "1px solid #536dfe",
+  background: "#536dfe",
+  color: "#ffffff",
+  borderRadius: 8,
+  padding: "10px 18px",
+  cursor: "pointer",
+};
+
+const datasetBanner: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 28,
+  background: "#11161d",
+  border: "1px solid #29313d",
+  borderRadius: 12,
+  padding: "16px 20px",
+  marginBottom: 22,
+  color: "#c5ced9",
+  fontSize: 13,
+};
+
+const statsGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(200px, 1fr))",
+  gap: 16,
+  marginBottom: 20,
+};
+
+const twoColumnGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 20,
+  marginBottom: 20,
+};
+
+const panelStyle: React.CSSProperties = {
+  background: "#11161d",
+  border: "1px solid #29313d",
+  borderRadius: 16,
+  padding: 22,
+  marginBottom: 20,
+};
+
+const panelTitle: React.CSSProperties = {
+  marginTop: 0,
+  marginBottom: 22,
+  fontSize: 17,
+  fontWeight: 600,
+};
+
+const loadingStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  minHeight: 500,
+  color: "#9ca7b5",
+};
+
+const emptyContainer: React.CSSProperties = {
+  minHeight: 600,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  alignItems: "center",
+  textAlign: "center",
+};
+
+const emptyIcon: React.CSSProperties = {
+  fontSize: 48,
+  marginBottom: 20,
+};
+
+const buttonStyle: React.CSSProperties = {
+  background: "#536dfe",
+  border: "none",
+  color: "#ffffff",
+  padding: "10px 20px",
+  borderRadius: 8,
+  cursor: "pointer",
+};

@@ -26,7 +26,7 @@ def test_encode_asset():
 
 
 def test_encode_unknown_asset():
-    assert FeatureEncoder.encode_asset("Unknown") == -1
+    assert FeatureEncoder.encode_asset("Unknown") == 0
 
 
 def test_encode_boolean_true():

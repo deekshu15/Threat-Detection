@@ -9,8 +9,8 @@ Engineering pipeline.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Mapping
 
-from datetime import datetime
 import pandas as pd
 
 PROTOCOL_MAP = {
@@ -21,6 +21,19 @@ PROTOCOL_MAP = {
 
 class EventGenerator:
 
+    @staticmethod
+    def _row_to_mapping(row: Any) -> Mapping[str, Any]:
+        if isinstance(row, Mapping):
+            return row
+        if hasattr(row, "_asdict"):
+            return row._asdict()
+        if hasattr(row, "to_dict"):
+            return row.to_dict()
+        try:
+            return dict(row)
+        except Exception:
+            return {}
+
     def generate(self, row):
 
         # IMPORTANT: For training we must not leak the ground-truth label
@@ -29,7 +42,9 @@ class EventGenerator:
         # derived from raw flow attributes. We deliberately avoid using
         # the original dataset `Label` to populate enrichment fields.
 
-        protocol_number = int(row.get("Protocol", 6))
+        row_mapping = self._row_to_mapping(row)
+
+        protocol_number = int(row_mapping.get("Protocol", 6))
 
         protocol = PROTOCOL_MAP.get(
             protocol_number,
@@ -37,13 +52,13 @@ class EventGenerator:
         )
 
         src_ip = (
-            f"192.168.{row.name % 250}."
-            f"{(row.name // 250) % 250}"
+            f"192.168.{getattr(row, 'name', 0) % 250}."
+            f"{(getattr(row, 'name', 0) // 250) % 250}"
         )
 
         dest_ip = (
-            f"10.10.{(row.name // 1000) % 250}."
-            f"{row.name % 250}"
+            f"10.10.{(getattr(row, 'name', 0) // 1000) % 250}."
+            f"{getattr(row, 'name', 0) % 250}"
         )
 
         # Use conservative defaults that do NOT encode the label.
@@ -57,8 +72,8 @@ class EventGenerator:
         # names (case-sensitive) and fall back to now().
         ts = None
         for key in ("timestamp", "Timestamp", "time", "Time"):
-            if key in row:
-                ts = row.get(key)
+            if key in row_mapping:
+                ts = row_mapping.get(key)
                 break
 
         if ts is not None:
@@ -71,7 +86,7 @@ class EventGenerator:
 
         event = {
 
-            "event_id": f"CICIDS-{row.name}",
+            "event_id": f"CICIDS-{getattr(row, 'name', 0)}",
 
             "timestamp": ts,
 
@@ -79,13 +94,9 @@ class EventGenerator:
 
             "dest_ip": dest_ip,
 
-            "src_port": int(
-                row.get("Source Port", 50000)
-            ),
+            "src_port": int(row_mapping.get("Source Port", 50000)),
 
-            "dest_port": int(
-                row.get("Destination Port", 80)
-            ),
+            "dest_port": int(row_mapping.get("Destination Port", 80)),
 
             "protocol": protocol,
 
@@ -97,9 +108,9 @@ class EventGenerator:
             # a non-informative default.
             "event_category": "Unknown",
 
-            "host": f"host-{row.name % 100}",
+            "host": f"host-{getattr(row, 'name', 0) % 100}",
 
-            "user": f"user-{row.name % 50}",
+            "user": f"user-{getattr(row, 'name', 0) % 50}",
 
             # Asset criticality and threat indicators must exist but must
             # not leak the label. Use UNKNOWN / zero defaults.
@@ -121,7 +132,7 @@ class EventGenerator:
         # Merge raw row columns into the event for flow-feature extraction.
         # Exclude Label/Target to avoid reintroducing ground-truth.
         try:
-            raw = dict(row)
+            raw = dict(row_mapping)
         except Exception:
             raw = {}
 

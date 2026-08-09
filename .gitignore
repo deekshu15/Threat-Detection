@@ -295,3 +295,13 @@ aws/lambdas/ml_engine/training/saved_models/
 !aws/lambdas/ml_engine/models/risk_classifier.pkl
 !aws/lambdas/ml_engine/models/label_encoder.pkl
 !aws/lambdas/ml_engine/models/metadata.json
+
+# Trained model artifacts
+aws/lambdas/ml_engine/models/*.pkl
+aws/lambdas/ml_engine/models/*.joblib
+aws/lambdas/ml_engine/models/*.onnx
+
+# Generated training outputs
+aws/lambdas/ml_engine/training/saved_models/
+aws/lambdas/ml_engine/models/risk_classifier.pkl
+aws/lambdas/ml_engine/training/saved_models/

@@ -1,6 +1,6 @@
 {
     "model": "RandomForestClassifier",
-    "features": 29,
+    "features": 33,
     "n_estimators": 200,
     "max_depth": 20,
     "accuracy": 1.0,

@@ -1,31 +1,36 @@
-"""
-evaluate.py
+"""Evaluation helpers for the trained cybersecurity model."""
 
-Evaluate the trained cybersecurity risk classification model.
-"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
 
 import joblib
 import pandas as pd
 
 from sklearn.metrics import (
     accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
     classification_report,
     confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
 )
 
+from aws.lambdas.feature_engineering.feature_selector import feature_schema
 from aws.lambdas.ml_engine.training.config import (
+    BENCHMARK_REPORT_FILENAME,
     MODEL_PATH,
-    LABEL_ENCODER_PATH,
     PROCESSED_DATASET,
+    PROCESSED_DATASET_DIR,
 )
 
-from aws.lambdas.ml_engine.training.constants import (
-    FEATURE_COLUMNS,
-    TARGET_COLUMN,
-)
+
+def _load_label_encoder():
+    encoder_path = PROCESSED_DATASET_DIR / "label_encoder.pkl"
+    if not encoder_path.exists():
+        raise FileNotFoundError(f"Label encoder not found: {encoder_path}")
+    return joblib.load(encoder_path)
 
 
 class ModelEvaluator:
@@ -38,13 +43,17 @@ class ModelEvaluator:
 
         model = joblib.load(MODEL_PATH)
 
-        encoder = joblib.load(LABEL_ENCODER_PATH)
+        encoder = _load_label_encoder()
 
         dataframe = pd.read_csv(PROCESSED_DATASET)
 
-        X = dataframe[FEATURE_COLUMNS]
+        schema = feature_schema()
+        feature_columns = schema.get("feature_names", [])
+        if not feature_columns:
+            raise RuntimeError("No feature schema available for evaluation.")
 
-        y = dataframe[TARGET_COLUMN]
+        X = dataframe[feature_columns]
+        y = dataframe["Target"]
 
         y_encoded = encoder.transform(y)
 
@@ -76,10 +85,12 @@ class ModelEvaluator:
             zero_division=0,
         )
 
+        target_names = [str(label) for label in encoder.classes_]
+
         report = classification_report(
             y_encoded,
             predictions,
-            target_names=encoder.classes_,
+            target_names=target_names,
             zero_division=0,
         )
 

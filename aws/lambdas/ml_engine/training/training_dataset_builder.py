@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import importlib.util
+import importlib
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +26,14 @@ PROCESSED_DIR = BASE_DIR / "datasets" / "processed"
 OUTPUT_DIR = BASE_DIR / "saved_models"
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+logger = logging.getLogger(__name__)
+
+if importlib.util.find_spec("tqdm") is not None:
+    tqdm = importlib.import_module("tqdm").tqdm
+else:  # pragma: no cover - tqdm is optional.
+    def tqdm(iterable, **_kwargs):
+        return iterable
 
 
 def build_dataset(parquet_file, prefix):
@@ -50,14 +61,9 @@ def build_dataset(parquet_file, prefix):
             df = df.sort_values(by=ts_col, ascending=True).reset_index(drop=True)
         except Exception:
             print("Warning: failed to parse/sort timestamps; proceeding without chronological ordering.")
-    X = []
-
-    y = []
-
     total = len(df)
 
-    print(f"\nBuilding {prefix} dataset")
-    print(f"Rows: {total:,}")
+    logger.info("Building %s dataset (%s rows)", prefix, f"{total:,}")
 
     # Reset pipeline state to avoid leakage from prior runs (e.g.,
     # behavioural/statistical history). This ensures train/test
@@ -66,39 +72,41 @@ def build_dataset(parquet_file, prefix):
         pipeline.reset_pipeline()
     except Exception:
         # If reset is not available, continue but warn
-        print("Warning: feature pipeline reset unavailable.")
+        logger.warning("Feature pipeline reset unavailable.")
 
-    for index, (_, row) in enumerate(df.iterrows(), start=1):
+    if total == 0:
+        raise ValueError(f"No rows found in {parquet_file}")
+
+    first_event = generate_event(df.iloc[0])
+    feature_width = len(pipeline.process_event(first_event)["vector"])
+    try:
+        pipeline.reset_pipeline()
+    except Exception:
+        logger.warning("Feature pipeline reset unavailable after width probe.")
+    X = np.empty((total, feature_width), dtype=np.float32)
+    y = np.empty(total, dtype=np.int32)
+
+    for index, (_, row) in enumerate(tqdm(df.iterrows(), total=total, desc=f"Building {prefix}"), start=0):
 
         event = generate_event(row)
 
         result = pipeline.process_event(event)
 
-        vector = result["vector"]
+        X[index] = np.asarray(result["vector"], dtype=np.float32)
 
-        X.append(vector)
+        y[index] = int(row["Target"])
 
-        y.append(row["Target"])
+        if (index + 1) % 50000 == 0:
 
-        if index % 10000 == 0:
-
-            print(f"{index:,}/{total:,}")
-
-    X = np.asarray(X, dtype=np.float32)
-
-    y = np.asarray(y, dtype=np.int32)
+            logger.info("%s/%s", f"{index + 1:,}", f"{total:,}")
 
     np.save(OUTPUT_DIR / f"X_{prefix}.npy", X)
 
     np.save(OUTPUT_DIR / f"y_{prefix}.npy", y)
 
-    print()
-
-    print(f"Saved X_{prefix}.npy")
-
-    print(f"Saved y_{prefix}.npy")
-
-    print("Shape:", X.shape)
+    logger.info("Saved X_%s.npy", prefix)
+    logger.info("Saved y_%s.npy", prefix)
+    logger.info("Shape: %s", X.shape)
 
     return X, y
 

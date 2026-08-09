@@ -14,16 +14,25 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
-from fastapi import FastAPI
+import time
+import logging
+from fastapi import FastAPI, logger
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi import HTTPException
+from fastapi import File, UploadFile
 
 from aws.lambdas.feature_engineering.feature_pipeline import process_event
 from aws.lambdas.ml_engine.predictor import predict
 
 from local_api.services.analysis_service import analysis_service
+from local_api.services.dashboard_service import (
+    DashboardService,
+    DashboardDataError,
+)
+
+import logging
+from datetime import datetime, timezone
 from local_api.models.request import ThreatAnalysisRequest
 # --------------------------------------------------
 # Threat Analysis Request Model
@@ -71,17 +80,23 @@ sys.path.append(str(BACKEND_ROOT))
 from processors.cve_processor import CVEProcessor  # noqa: E402
 
 app = FastAPI(title="Threat Detection Dashboard - Local Dev API")
+dashboard_service = DashboardService()
 
 # Allow the frontend dev server to call this API from the browser.
 # Vite's default port is 5173; Create React App's default is 3000.
 # Add any other port your frontend actually runs on.
+from fastapi.middleware.cors import CORSMiddleware
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
     ],
-    allow_methods=["GET"],
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -344,26 +359,297 @@ def get_total_event_count():
 
 @app.post("/api/analyze")
 def analyze(request: ThreatAnalysisRequest):
+    logger = logging.getLogger("local_api.analyze")
+    payload = request.model_dump()
+    start = datetime.now(timezone.utc)
 
-    result = analysis_service.analyze(
-        request.model_dump()
-    )
+    try:
+        result = analysis_service.analyze(payload)
 
-    return {
-    "success": True,
+        pred = result.get("prediction")
 
-    "prediction": result["prediction"],
+        model_info = {
+            "model": getattr(result.get("prediction", {}), "get", lambda k, d=None: None)("model_name", None)
+        }
 
-    "enriched_event": result["enriched_event"],
+        response = {
+            "success": True,
+            "prediction": pred,
+            "enriched_event": result.get("enriched_event"),
+            "validated_event": result.get("validated_event"),
+            # Report the actual feature count used by the model (vector length)
+            "feature_count": len(result.get("vector", [])),
+            "vector_length": len(result.get("vector", [])),
+            "processing": {
+                "model_name": model_info.get("model") or getattr(result.get("prediction", {}), "get", lambda k, d=None: None)("model_name", None)
+            },
+            "timing": {
+                "prediction_time": datetime.now(timezone.utc).isoformat(),
+                "elapsed_ms": (datetime.now(timezone.utc) - start).total_seconds() * 1000,
+            },
+        }
 
-    "validated_event": result["validated_event"],
+        return response
 
-    "feature_count": len(result["features"]),
-
-    "vector_length": len(result["vector"]),
-
-    "processing": {
-        "model": "RandomForest-v1"
-    }
-}
+    except Exception as exc:
+        logger.exception("Analyze failed")
+        raise HTTPException(status_code=500, detail=str(exc))
     
+# --------------------------------------------------
+# Dashboard API
+# --------------------------------------------------
+
+@app.get("/api/dashboard")
+def get_dashboard():
+    """
+    Returns dashboard statistics generated from
+    the latest processed security dataset.
+    """
+
+    try:
+        return dashboard_service.get_dashboard()
+
+    except DashboardDataError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": str(exc),
+                "code": "NO_DASHBOARD_DATA",
+            },
+        )
+
+    except Exception as exc:
+        logging.getLogger(
+            "local_api.dashboard"
+        ).exception(
+            "Dashboard generation failed"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Unable to generate dashboard data",
+                "error": str(exc),
+            },
+        )
+
+
+# --------------------------------------------------
+# Dataset Upload API
+# --------------------------------------------------
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """
+    Accepts a CSV or JSON file, normalizes it and saves a processed copy.
+
+    Returns a JSON response with success, message, rows_processed and filename.
+    """
+    logger = logging.getLogger("local_api.upload")
+
+    start = time.perf_counter()
+
+    logger.info("=" * 60)
+    logger.info("UPLOAD STARTED")
+    logger.info("Filename: %s", file.filename)
+
+    try:
+        # -------------------------
+        # Read uploaded file
+        # -------------------------
+        content = await file.read()
+
+        logger.info(
+            "File read completed (%.2f ms)",
+            (time.perf_counter() - start) * 1000,
+        )
+
+        filename = file.filename or "uploaded_dataset"
+
+        import io
+        import json as jsonlib
+        import pandas as pd
+
+        # -------------------------
+        # Parse CSV / JSON
+        # -------------------------
+        data_input = None
+
+        try:
+            data_input = pd.read_csv(io.BytesIO(content))
+        except Exception:
+            try:
+                parsed_json = jsonlib.loads(content.decode("utf-8-sig"))
+                data_input = (
+                    parsed_json
+                    if isinstance(parsed_json, dict)
+                    else pd.DataFrame(parsed_json)
+                )
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "Uploaded file must be valid CSV or JSON",
+                        "detected_columns": [],
+                        "missing_required_columns": [],
+                        "supported_schemas": {},
+                    },
+                )
+
+        logger.info(
+            "Data loaded successfully | Rows=%d | Columns=%d | %.2f ms",
+            len(data_input),
+            len(data_input.columns),
+            (time.perf_counter() - start) * 1000,
+        )
+
+        # -------------------------
+        # Schema Detection
+        # -------------------------
+        from processors.factory import ProcessorFactory
+        from processors.schema_detector import (
+            DatasetSchemaDetector,
+            DatasetSchemaError,
+        )
+        from processors.cve_processor import CVEProcessor
+
+        logger.info("Starting schema detection...")
+
+        try:
+            detection = DatasetSchemaDetector.detect(data_input)
+            detected_type = detection.get("dataset_type")
+
+            logger.info(
+                "Schema detected: %s (%.2f ms)",
+                detected_type,
+                (time.perf_counter() - start) * 1000,
+            )
+
+        except DatasetSchemaError as se:
+            detail = {
+                "message": se.message,
+                "detected_columns": se.detected_columns,
+                "missing_required_columns": se.missing_required,
+                "supported_schemas": se.supported_schemas,
+            }
+
+            logger.warning(
+                "Upload rejected due to schema mismatch: %s",
+                detail,
+            )
+
+            raise HTTPException(
+                status_code=400,
+                detail=detail,
+            )
+
+        # -------------------------
+        # Normalization
+        # -------------------------
+        logger.info("Starting normalization...")
+
+        try:
+            if detected_type == "cve" and isinstance(data_input, dict):
+                normalized = CVEProcessor().normalize(data_input)
+
+                normalized = pd.DataFrame(
+                    [
+                        vars(row)
+                        if hasattr(row, "__dict__")
+                        else row
+                        for row in normalized
+                    ]
+                )
+
+            else:
+                processor = ProcessorFactory.create(detected_type)
+                normalized = processor.normalize(data_input)
+
+            logger.info(
+                "Normalization completed | Rows=%d | Columns=%d | %.2f ms",
+                len(normalized),
+                len(normalized.columns),
+                (time.perf_counter() - start) * 1000,
+            )
+
+        except Exception as e:
+            logger.exception("Normalization failed")
+
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": f"Normalization failed: {e}",
+                    "error_details": str(e),
+                },
+            )
+
+        # -------------------------
+        # Save Processed Dataset
+        # -------------------------
+        logger.info("Writing processed dataset...")
+
+        processed_dir = (
+            Path(__file__).resolve().parent.parent
+            / "datasets"
+            / "processed"
+        )
+
+        processed_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        out_path = (
+            processed_dir
+            / f"processed_{filename.rsplit('.',1)[0]}.csv"
+        )
+
+        normalized.to_csv(
+            out_path,
+            index=False,
+        )
+
+        logger.info(
+            "CSV written successfully (%.2f ms)",
+            (time.perf_counter() - start) * 1000,
+        )
+
+        # -------------------------
+        # Build Response
+        # -------------------------
+        rows = len(normalized)
+
+        resp = {
+            "success": True,
+            "message": "Dataset uploaded successfully",
+            "dataset_type": detected_type,
+            "rows_processed": rows,
+            "filename": str(out_path.name),
+        }
+
+        logger.info(
+            "Upload succeeded: %s | Rows=%d | File=%s",
+            filename,
+            rows,
+            out_path,
+        )
+
+        logger.info(
+            "Returning response (Total %.2f ms)",
+            (time.perf_counter() - start) * 1000,
+        )
+
+        logger.info("=" * 60)
+
+        return resp
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Upload failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Internal Server Error",
+        )

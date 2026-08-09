@@ -106,15 +106,52 @@ class FeatureEncoder:
     # Asset
     # -----------------------------------------------------
 
-    def encode_asset(
-        self,
-        asset: Optional[str],
-    ) -> int:
+    @staticmethod
+    def encode_source(source: Optional[str]) -> int:
+
+        if source is None:
+            return -1
+
+        source = str(source).strip().lower()
+
+        return {
+            "windows": 1,
+            "ids": 2,
+            "linux": 3,
+            "firewall": 4,
+            "cve": 5,
+        }.get(source, -1)
+
+    @staticmethod
+    def encode_technique(technique: Optional[str]) -> int:
+
+        if technique is None:
+            return -1
+
+        text = str(technique).strip().upper()
+        known_techniques = {
+            1003,
+            1053,
+            1059,
+            1110,
+            1486,
+        }
+
+        if text.startswith("T") and text[1:].isdigit():
+            value = int(text[1:])
+            return value if value in known_techniques else -1
+        if text.isdigit():
+            value = int(text)
+            return value if value in known_techniques else -1
+        return -1
+
+    @staticmethod
+    def encode_asset(asset: Optional[str]) -> int:
 
         if asset is None:
             return ASSET_ENCODING["UNKNOWN"]
 
-        asset = asset.upper().strip()
+        asset = str(asset).upper().strip()
 
         return ASSET_ENCODING.get(
             asset,
@@ -237,46 +274,29 @@ class FeatureEncoder:
     # Encode Event
     # -----------------------------------------------------
 
-    def encode_event(
-        self,
-        event: Dict,
-    ) -> Dict:
+    @staticmethod
+    def encode_event(*args, **kwargs) -> Dict:
 
-        encoded = dict(event)
+        if args and isinstance(args[0], dict) and not kwargs:
+            event = args[0]
+            source = event.get("source")
+            technique = event.get("technique") or event.get("mitre_technique_id")
+            asset = event.get("asset") or event.get("asset_criticality")
+            known_attack = event.get("known_attack") or event.get("matched_ioc")
+        else:
+            event = {}
+            source = kwargs.get("source", args[0] if args else None)
+            technique = kwargs.get("technique", args[1] if len(args) > 1 else None)
+            asset = kwargs.get("asset", args[2] if len(args) > 2 else None)
+            known_attack = kwargs.get("known_attack", args[3] if len(args) > 3 else None)
 
-        encoded["severity_encoded"] = self.encode_severity(
-            event.get("severity")
-        )
-
-        encoded["protocol_encoded"] = self.encode_protocol(
-            event.get("protocol")
-        )
-
-        encoded["asset_score"] = self.encode_asset(
-            event.get("asset_criticality")
-        )
-
-        encoded["mitre_weight"] = self.encode_mitre_tactic(
-            event.get("mitre_tactic")
-        )
-
-        encoded["event_category_encoded"] = self.encode_event_category(
-            event.get("event_category")
-        )
-
-        encoded["cvss_normalized"] = self.normalize_cvss(
-            event.get("cvss_score")
-        )
-
-        encoded["threat_score_normalized"] = self.normalize_threat_score(
-            event.get("threat_score")
-        )
-
-        encoded["ioc_flag"] = self.encode_boolean(
-            event.get("matched_ioc")
-        )
-
-        return encoded
+        return {
+            "source_id": FeatureEncoder.encode_source(source),
+            "technique_id": FeatureEncoder.encode_technique(technique),
+            "asset_score": FeatureEncoder.encode_asset(asset),
+            "known_attack": FeatureEncoder.encode_boolean(known_attack),
+            **event,
+        }
 
 
 # ---------------------------------------------------------
