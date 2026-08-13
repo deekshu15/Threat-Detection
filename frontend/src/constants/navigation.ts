@@ -20,9 +20,20 @@ import BiotechRoundedIcon from "@mui/icons-material/BiotechRounded";
 import FactCheckRoundedIcon from "@mui/icons-material/FactCheckRounded";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
 import WidgetsRoundedIcon from "@mui/icons-material/WidgetsRounded";
+import RadarRoundedIcon from "@mui/icons-material/RadarRounded";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+import PublicRoundedIcon from "@mui/icons-material/PublicRounded";
+import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
+import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
 
 const coreTools: NavigationItem[] = [
   { label: "Dashboard", path: "/dashboard", icon: DashboardRoundedIcon },
+  { label: "Threat Detection", path: "/threat-detection", icon: RadarRoundedIcon },
+  { label: "Incident Response", path: "/incident-response", icon: WarningAmberRoundedIcon },
+  { label: "Threat Intelligence", path: "/threat-intelligence", icon: PublicRoundedIcon },
+  { label: "Security Sources", path: "/security-sources", icon: DnsRoundedIcon },
+  { label: "SIEM Monitoring", path: "/siem-monitoring", icon: MonitorHeartRoundedIcon },
+  { label: "Reports", path: "/reports", icon: DescriptionRoundedIcon },
   { label: "Static Data", path: "/static-data", icon: StorageRoundedIcon },
   { label: "Live API", path: "/live-api", icon: ApiRoundedIcon },
   { label: "REST API", path: "/rest-api", icon: ApiRoundedIcon },

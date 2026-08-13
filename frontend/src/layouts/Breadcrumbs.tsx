@@ -17,6 +17,12 @@ function Breadcrumbs() {
 
   const labels: Record<string, string> = {
     dashboard: "Dashboard",
+    "threat-detection": "Threat Detection",
+    "incident-response": "Incident Response",
+    "threat-intelligence": "Threat Intelligence",
+    "security-sources": "Security Sources",
+    "siem-monitoring": "SIEM Monitoring",
+    reports: "Reports",
     "static-data": "Static Data",
     "live-api": "Live API",
     "rest-api": "REST API",

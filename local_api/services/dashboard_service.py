@@ -418,7 +418,7 @@ class DashboardService:
                 "risk_level",
                 "risk level",
             ],
-        ),
+        )
 
         source_column = self.find_column(
             df,
@@ -429,8 +429,7 @@ class DashboardService:
                 "Source IP",
                 "Src IP",
             ],
-        ),
-    
+        )
 
         destination_column = self.find_column(
             df,
@@ -442,7 +441,7 @@ class DashboardService:
                 "Destination IP",
                 "Dst IP",
             ],
-         ),
+        )
 
         timestamp_column = self.find_column(
             df,
@@ -500,7 +499,6 @@ class DashboardService:
                     "severity": severity,
                 }
             )
-        
 
         return records
 

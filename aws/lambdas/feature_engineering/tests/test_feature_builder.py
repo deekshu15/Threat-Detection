@@ -5,24 +5,33 @@ import pytest
 from aws.lambdas.feature_engineering.feature_builder import (
     build_features,
 )
+from aws.lambdas.feature_engineering.validator import (
+    MissingFieldError,
+)
 
 
 EVENT = {
-
+    "event_id": "evt-001",
+    "timestamp": "2026-01-15T12:00:00Z",
+    "src_ip": "192.168.1.100",
+    "dest_ip": "10.0.0.5",
+    "severity": "High",
+    "protocol": "TCP",
+    "event_category": "Credential Attack",
+    "asset_criticality": "High",
+    "threat_score": 75.0,
+    "cvss_score": 9.1,
+    "matched_ioc": True,
+    "mitre_technique_id": "T1110",
+    "mitre_tactic": "Credential Access",
     "source": "windows",
-
     "mitre": {
         "technique": "T1110"
     },
-
     "threat_intelligence": {
-
         "severity_score": 75,
-
         "risk_weight": 80,
-
         "asset_criticality": "High",
-
         "known_attack": True,
     },
 }
@@ -54,5 +63,5 @@ def test_original_event_preserved():
 
 def test_invalid_event():
 
-    with pytest.raises(ValueError):
+    with pytest.raises(MissingFieldError):
         build_features({})
