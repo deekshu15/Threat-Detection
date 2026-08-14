@@ -1,4 +1,4 @@
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 async function postAnalyze(event: Record<string, any>) {
   const res = await fetch(`${API_BASE}/api/analyze`, {
@@ -19,7 +19,12 @@ const detectionService = {
   async getModels() {
     // Model metadata isn't exposed; return minimal info.
     return [
-      { id: 1, name: "risk_classifier", algorithm: "Ensemble", status: "Online" },
+      {
+        id: 1,
+        name: "risk_classifier",
+        algorithm: "Ensemble",
+        status: "Online",
+      },
     ];
   },
 
@@ -46,6 +51,7 @@ const detectionService = {
     };
 
     const resp = await postAnalyze(sample);
+
     return {
       threatsDetected: 1,
       confidence: resp.prediction?.confidence ?? 0,
@@ -54,7 +60,7 @@ const detectionService = {
   },
 
   async getPredictions() {
-    // For local dev show a small list of real predictions from the backend.
+    // For local development, show predictions returned by the backend.
     const samples = [
       {
         event_id: "SAMPLE-1",
@@ -78,23 +84,41 @@ const detectionService = {
     ];
 
     const results = [];
+
     for (const s of samples) {
       try {
         const r = await postAnalyze(s);
+
         results.push({
           id: s.event_id,
-          timestamp: new Date(r.timing?.prediction_time ?? s.timestamp).toLocaleTimeString(),
+          timestamp: new Date(
+            r.timing?.prediction_time ?? s.timestamp
+          ).toLocaleTimeString(),
           source: "Live",
           prediction: r.prediction?.prediction ?? "Unknown",
-          confidence: Math.round((r.prediction?.confidence ?? 0) * 100),
+          confidence: Math.round(
+            (r.prediction?.confidence ?? 0) * 100
+          ),
           severity: "High",
-          model_name: r.processing?.model_name ?? r.prediction?.model_name ?? null,
-          top_predictions: (r.prediction?.top_predictions ?? []).map((t: any) => ({ label: t.label, confidence: Math.round((t.confidence ?? 0) * 100) })),
+          model_name:
+            r.processing?.model_name ??
+            r.prediction?.model_name ??
+            null,
+          top_predictions: (
+            r.prediction?.top_predictions ?? []
+          ).map((t: any) => ({
+            label: t.label,
+            confidence: Math.round((t.confidence ?? 0) * 100),
+          })),
         });
       } catch (e) {
+        console.error("Prediction request failed:", e);
+
         results.push({
           id: s.event_id,
-          timestamp: new Date(s.timestamp).toLocaleTimeString(),
+          timestamp: new Date(
+            s.timestamp
+          ).toLocaleTimeString(),
           source: "Live",
           prediction: "Error",
           confidence: 0,
