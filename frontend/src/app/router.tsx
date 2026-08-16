@@ -22,12 +22,6 @@ import ApiKeysPage from "../modules/apiKeys/ApiKeysPage";
 import OpenVasPage from "../modules/openvas/OpenVasPage";
 import NiktoPage from "../modules/nikto/NiktoPage";
 import ToolControlPage from "../modules/shared/ToolControlPage";
-import ThreatDetectionPage from "../modules/detection/ThreatDetectionPage";
-import IncidentResponsePage from "../modules/incidents/IncidentResponsePage";
-import ThreatIntelligencePage from "../modules/intelligence/ThreatIntelligencePage";
-import ReportsPage from "../modules/reports/ReportsPage";
-import SecuritySourcesPage from "../modules/security/SecuritySourcesPage";
-import SIEMMonitoringPage from "../modules/siem/SIEMMonitoringPage";
 import RootRedirect from "../auth/RootRedirect";
 
 export default function AppRouter() {
@@ -51,12 +45,6 @@ export default function AppRouter() {
           <Route path="/statistics" element={<StatisticsPage />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/threat-detection" element={<ThreatDetectionPage />} />
-          <Route path="/incident-response" element={<IncidentResponsePage />} />
-          <Route path="/threat-intelligence" element={<ThreatIntelligencePage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/security-sources" element={<SecuritySourcesPage />} />
-          <Route path="/siem-monitoring" element={<SIEMMonitoringPage />} />
           <Route path="/ai-summary" element={<PlaceholderFeaturePage title="AI Summary" description="Summarize current incidents, investigation progress, and response posture." stats={[{label:"Summaries", value:"48", detail:"last 24h"},{label:"Coverage", value:"89%", detail:"critical cases"},{label:"Quality", value:"4.8/5", detail:"analyst rating"}]} badge="Summary" />} />
           <Route path="/ai-recs" element={<PlaceholderFeaturePage title="AI Recs" description="Review AI-generated recommendations and operational next steps." stats={[{label:"Recommendations", value:"24", detail:"ranked"},{label:"Accepted", value:"68%", detail:"auto-accepted"},{label:"Priority", value:"High", detail:"escalation queue"}]} badge="Recs" />} />
           <Route path="/vulnerability-assessment" element={<PlaceholderFeaturePage title="Vulnerability Assessment" description="Monitor known weaknesses and remediation tracking across all monitors." stats={[{label:"Assets reviewed", value:"392", detail:"active scope"},{label:"Critical vulns", value:"11", detail:"requires patching"},{label:"Remediated", value:"76%", detail:"this quarter"}]} badge="Vulns" />} />

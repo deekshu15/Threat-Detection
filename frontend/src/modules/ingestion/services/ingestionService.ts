@@ -36,7 +36,7 @@ const ingestionService = {
     file: File,
     onProgress?: (percent: number) => void,
   ): Promise<UploadResponse> {
-    const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(
+    const apiBase = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(
       /\/$/,
       "",
     );
