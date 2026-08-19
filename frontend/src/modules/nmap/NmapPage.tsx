@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import PublicRoundedIcon from "@mui/icons-material/PublicRounded";
+import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import { Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
@@ -27,6 +28,30 @@ type HostSnapshot = {
   score: number;
   status: string;
 };
+
+type ScanPhase = "idle" | "starting" | "scanning" | "completed" | "failed" | "timedout";
+
+const SCAN_START_DELAY_MS = 250;
+const SCAN_WORK_DELAY_MS = 900;
+const SCAN_TIMEOUT_MS = 30000;
+
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: "#ef4444",
+  high: "#fb7185",
+  medium: "#fbbf24",
+  low: "#34d399",
+  info: "#60a5fa",
+};
+
+function getSeverityColor(severity: string | null | undefined) {
+  const key = (severity ?? "").toLowerCase().trim();
+  return SEVERITY_COLORS[key] ?? "#7c8aa5";
+}
+
+function safeText(value: string | null | undefined, fallback: string) {
+  const text = value?.trim();
+  return text ? text : fallback;
+}
 
 const scanTypes: Array<{
   id: ScanType;
@@ -132,13 +157,68 @@ function getOsGuess(target: string) {
 function NmapPage() {
   const [target, setTarget] = useState("192.168.1.0/24");
   const [scanType, setScanType] = useState<ScanType>("quick");
-  const [isScanning, setIsScanning] = useState(false);
+  const [scanPhase, setScanPhase] = useState<ScanPhase>("idle");
+  const [elapsed, setElapsed] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [result, setResult] = useState<HostSnapshot | null>(null);
 
-  const selectedScan = useMemo(() => scanTypes.find((item) => item.id === scanType) ?? scanTypes[0], [scanType]);
+  const scanPhaseRef = useRef<ScanPhase>("idle");
+  const mountedRef = useRef(true);
+  const startTimerRef = useRef<number | null>(null);
+  const workTimerRef = useRef<number | null>(null);
+  const timeoutTimerRef = useRef<number | null>(null);
+  const elapsedTimerRef = useRef<number | null>(null);
 
-  const startScan = async () => {
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      if (startTimerRef.current) {
+        window.clearTimeout(startTimerRef.current);
+      }
+      if (workTimerRef.current) {
+        window.clearTimeout(workTimerRef.current);
+      }
+      if (timeoutTimerRef.current) {
+        window.clearTimeout(timeoutTimerRef.current);
+      }
+      if (elapsedTimerRef.current) {
+        window.clearInterval(elapsedTimerRef.current);
+      }
+    };
+  }, []);
+
+  const updateScanPhase = (phase: ScanPhase) => {
+    scanPhaseRef.current = phase;
+    setScanPhase(phase);
+  };
+
+  const clearTimers = () => {
+    if (startTimerRef.current) {
+      window.clearTimeout(startTimerRef.current);
+      startTimerRef.current = null;
+    }
+    if (workTimerRef.current) {
+      window.clearTimeout(workTimerRef.current);
+      workTimerRef.current = null;
+    }
+    if (timeoutTimerRef.current) {
+      window.clearTimeout(timeoutTimerRef.current);
+      timeoutTimerRef.current = null;
+    }
+    if (elapsedTimerRef.current) {
+      window.clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+    }
+  };
+
+  const startScan = () => {
+    const currentPhase = scanPhaseRef.current;
+    if (currentPhase === "starting" || currentPhase === "scanning") {
+      return;
+    }
+
     const trimmedTarget = target.trim();
 
     if (!isValidTarget(trimmedTarget)) {
@@ -147,25 +227,76 @@ function NmapPage() {
     }
 
     setErrorMessage("");
-    setIsScanning(true);
     setResult(null);
+    setElapsed(0);
+    updateScanPhase("starting");
 
-    await new Promise((resolve) => window.setTimeout(resolve, 900));
+    startTimerRef.current = window.setTimeout(() => {
+      if (!mountedRef.current || scanPhaseRef.current !== "starting") {
+        return;
+      }
 
-    const findings = buildFindings(trimmedTarget, scanType);
-    const score = scoreScan(findings);
+      updateScanPhase("scanning");
 
-    setResult({
-      target: trimmedTarget,
-      resolvedTo: buildResolvedAddress(trimmedTarget),
-      osGuess: getOsGuess(trimmedTarget),
-      scanType,
-      findings,
-      score,
-      status: getStatus(score, findings),
-    });
-    setIsScanning(false);
+      elapsedTimerRef.current = window.setInterval(() => {
+        if (mountedRef.current) {
+          setElapsed((value) => value + 1);
+        }
+      }, 1000);
+
+      timeoutTimerRef.current = window.setTimeout(() => {
+        if (!mountedRef.current) {
+          return;
+        }
+        clearTimers();
+        updateScanPhase("timedout");
+        setErrorMessage("Nmap scan timed out. The scanner did not respond within the expected time.");
+      }, SCAN_TIMEOUT_MS);
+
+      workTimerRef.current = window.setTimeout(() => {
+        if (!mountedRef.current) {
+          return;
+        }
+
+        try {
+          const findings = buildFindings(trimmedTarget, scanType);
+          const score = scoreScan(findings);
+
+          setResult({
+            target: trimmedTarget,
+            resolvedTo: buildResolvedAddress(trimmedTarget),
+            osGuess: getOsGuess(trimmedTarget),
+            scanType,
+            findings,
+            score,
+            status: getStatus(score, findings),
+          });
+          updateScanPhase("completed");
+        } catch {
+          clearTimers();
+          updateScanPhase("failed");
+          setErrorMessage("Nmap scan failed.");
+          return;
+        } finally {
+          if (elapsedTimerRef.current) {
+            window.clearInterval(elapsedTimerRef.current);
+            elapsedTimerRef.current = null;
+          }
+          if (timeoutTimerRef.current) {
+            window.clearTimeout(timeoutTimerRef.current);
+            timeoutTimerRef.current = null;
+          }
+        }
+      }, SCAN_WORK_DELAY_MS);
+    }, SCAN_START_DELAY_MS);
   };
+
+  const retryScan = () => {
+    startScan();
+  };
+
+  const selectedScan = useMemo(() => scanTypes.find((item) => item.id === scanType) ?? scanTypes[0], [scanType]);
+  const isScanInProgress = scanPhase === "starting" || scanPhase === "scanning";
 
   const riskColor = result ? (result.score >= 50 ? "#fb7185" : result.score >= 25 ? "#fbbf24" : "#34d399") : "#7c8aa5";
 
@@ -248,22 +379,27 @@ function NmapPage() {
             return (
               <Box
                 key={item.id}
-                onClick={() => setScanType(item.id)}
+                onClick={() => {
+                  if (!isScanInProgress) {
+                    setScanType(item.id);
+                  }
+                }}
                 sx={{
                   minHeight: 54,
                   px: 1.6,
                   py: 1.2,
                   borderRadius: 3,
-                  cursor: "pointer",
+                  cursor: isScanInProgress ? "default" : "pointer",
+                  opacity: isScanInProgress && !active ? 0.55 : 1,
                   bgcolor: active ? "rgba(0, 198, 255, 0.12)" : "rgba(255,255,255,0.04)",
                   border: `1px solid ${active ? "rgba(0, 198, 255, 0.95)" : "rgba(255,255,255,0.06)"}`,
                   transition: "160ms ease",
                   "&:hover": {
-                    bgcolor: active ? "rgba(0, 198, 255, 0.14)" : "rgba(255,255,255,0.06)",
+                    bgcolor: active ? "rgba(0, 198, 255, 0.14)" : isScanInProgress ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.06)",
                   },
                 }}
               >
-                <Typography fontWeight={700} sx={{ color: active ? "#22d3ee" : "text.primary" }}>
+                <Typography sx={{ fontWeight: 700, color: active ? "#22d3ee" : "text.primary" }}>
                   {item.title}
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 0.2, color: active ? "#7dd3fc" : "text.secondary" }}>
@@ -276,9 +412,9 @@ function NmapPage() {
 
         <Button
           onClick={startScan}
-          disabled={isScanning}
+          disabled={isScanInProgress}
           fullWidth
-          startIcon={<PlayArrowRoundedIcon />}
+          startIcon={isScanInProgress ? <PublicRoundedIcon /> : <PlayArrowRoundedIcon />}
           sx={{
             mt: 2.2,
             minHeight: 42,
@@ -295,10 +431,90 @@ function NmapPage() {
             },
           }}
         >
-          {isScanning ? "Scanning..." : "Start Scan"}
+          {scanPhase === "starting" ? "Starting scan..." : isScanInProgress ? "Scanning..." : "Start Scan"}
         </Button>
 
-        {errorMessage && (
+        {isScanInProgress && (
+          <Box
+            sx={{
+              mt: 2.2,
+              p: 1.6,
+              borderRadius: 2,
+              bgcolor: "rgba(34, 211, 238, 0.06)",
+              border: "1px solid rgba(34, 211, 238, 0.16)",
+            }}
+          >
+            <Stack direction="row" spacing={1.1} sx={{ alignItems: "center" }}>
+              <PublicRoundedIcon sx={{ color: "#22d3ee", fontSize: 20 }} />
+              <Typography variant="body2" sx={{ color: "#a5f3fc" }}>
+                {scanPhase === "starting"
+                  ? "Starting Nmap scan..."
+                  : `Scanning target... Elapsed: ${elapsed} seconds`}
+              </Typography>
+            </Stack>
+          </Box>
+        )}
+
+        {scanPhase === "completed" && (
+          <Box
+            sx={{
+              mt: 2.2,
+              p: 1.6,
+              borderRadius: 2,
+              bgcolor: "rgba(52, 211, 153, 0.06)",
+              border: "1px solid rgba(52, 211, 153, 0.16)",
+            }}
+          >
+            <Typography variant="body2" sx={{ color: "#6ee7b7" }}>
+              Scan completed successfully.
+            </Typography>
+          </Box>
+        )}
+
+        {(scanPhase === "failed" || scanPhase === "timedout") && (
+          <Box
+            sx={{
+              mt: 2.2,
+              p: 1.6,
+              borderRadius: 2,
+              bgcolor: "rgba(239, 68, 68, 0.08)",
+              border: "1px solid rgba(239, 68, 68, 0.18)",
+            }}
+          >
+            <Stack direction="row" spacing={1.4} sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <WarningAmberRoundedIcon sx={{ color: "#fca5a5", fontSize: 20 }} />
+                <Typography variant="body2" sx={{ color: "#fca5a5" }}>
+                  {scanPhase === "timedout" ? "Scan timed out." : "Nmap scan failed."}
+                </Typography>
+              </Box>
+
+              <Button
+                onClick={retryScan}
+                size="small"
+                startIcon={<ReplayRoundedIcon />}
+                sx={{
+                  minHeight: 32,
+                  borderRadius: 2,
+                  textTransform: "none",
+                  fontWeight: 700,
+                  fontSize: "0.85rem",
+                  color: "#fecaca",
+                  bgcolor: "rgba(239, 68, 68, 0.14)",
+                  border: "1px solid rgba(239, 68, 68, 0.28)",
+                  "&:hover": {
+                    bgcolor: "rgba(239, 68, 68, 0.22)",
+                    borderColor: "rgba(239, 68, 68, 0.4)",
+                  },
+                }}
+              >
+                Retry Scan
+              </Button>
+            </Stack>
+          </Box>
+        )}
+
+        {errorMessage && scanPhase !== "failed" && scanPhase !== "timedout" && (
           <Box sx={{ mt: 2.2, p: 1.5, borderRadius: 2, bgcolor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.18)" }}>
             <Typography variant="body2" sx={{ color: "#fca5a5" }}>
               {errorMessage}
@@ -306,20 +522,28 @@ function NmapPage() {
           </Box>
         )}
 
-        {result && (
+        {result && result.findings.length === 0 && (
+          <Box sx={{ mt: 3, p: 2, borderRadius: 2, bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+              No scan results found.
+            </Typography>
+          </Box>
+        )}
+
+        {result && result.findings.length > 0 && (
           <Box sx={{ mt: 3, display: "grid", gap: 2.2 }}>
             <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.2, alignItems: "center", justifyContent: "space-between" }}>
               <Box>
-                <Typography variant="subtitle1" fontWeight={700}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Scan result
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4 }}>
-                  {result.status} • Score {result.score}/100
+                  {safeText(result.status, "Scan completed")} • Score {Number.isFinite(result.score) ? result.score : 0}/100
                 </Typography>
               </Box>
 
               <Chip
-                label={result.status}
+                label={safeText(result.status, "Scan completed")}
                 sx={{
                   bgcolor: `${riskColor}1a`,
                   color: riskColor,
@@ -334,13 +558,13 @@ function NmapPage() {
                 <Typography variant="caption" color="text.secondary">
                   Target
                 </Typography>
-                <Typography variant="body2">{result.target}</Typography>
+                <Typography variant="body2">{safeText(result.target, "Unknown target")}</Typography>
               </Box>
               <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
                 <Typography variant="caption" color="text.secondary">
                   Resolved Address
                 </Typography>
-                <Typography variant="body2">{result.resolvedTo}</Typography>
+                <Typography variant="body2">{safeText(result.resolvedTo, "N/A")}</Typography>
               </Box>
               <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
                 <Typography variant="caption" color="text.secondary">
@@ -352,7 +576,7 @@ function NmapPage() {
                 <Typography variant="caption" color="text.secondary">
                   OS Guess
                 </Typography>
-                <Typography variant="body2">{result.osGuess}</Typography>
+                <Typography variant="body2">{safeText(result.osGuess, "Unknown OS")}</Typography>
               </Box>
             </Box>
 
@@ -361,47 +585,52 @@ function NmapPage() {
                 DISCOVERED SERVICES
               </Typography>
               <Stack spacing={1.1}>
-                {result.findings.map((finding) => (
-                  <Box
-                    key={`${finding.port}-${finding.protocol}`}
-                    sx={{
-                      p: 1.4,
-                      borderRadius: 2,
-                      bgcolor: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.05)",
-                    }}
-                  >
-                    <Stack direction="row" spacing={1.2} alignItems="center" justifyContent="space-between" flexWrap="wrap">
-                      <Stack direction="row" spacing={1.2} alignItems="center">
-                        <PublicRoundedIcon sx={{ color: severityColor(finding.risk) }} fontSize="small" />
-                        <Typography variant="body2" fontWeight={700}>
-                          {finding.port}/{finding.protocol}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {finding.service}
-                        </Typography>
-                      </Stack>
+                {result.findings.map((finding, index) => {
+                  const findingRisk = safeText(finding.risk, "low");
+                  const findingColor = getSeverityColor(findingRisk);
 
-                      <Chip
-                        size="small"
-                        label={finding.state}
-                        sx={{
-                          textTransform: "capitalize",
-                          bgcolor: `${severityColor(finding.risk)}1a`,
-                          color: severityColor(finding.risk),
-                          border: `1px solid ${severityColor(finding.risk)}33`,
-                          fontWeight: 700,
-                        }}
-                      />
-                    </Stack>
-                  </Box>
-                ))}
+                  return (
+                    <Box
+                      key={`${finding.port}-${finding.protocol}-${index}`}
+                      sx={{
+                        p: 1.4,
+                        borderRadius: 2,
+                        bgcolor: "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(255,255,255,0.05)",
+                      }}
+                    >
+                      <Stack direction="row" spacing={1.2} sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                        <Stack direction="row" spacing={1.2} sx={{ alignItems: "center" }}>
+                          <PublicRoundedIcon sx={{ color: findingColor }} fontSize="small" />
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            {Number.isFinite(finding.port) ? finding.port : "N/A"}/{safeText(finding.protocol, "tcp")}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {safeText(finding.service, "Unknown service")}
+                          </Typography>
+                        </Stack>
+
+                        <Chip
+                          size="small"
+                          label={safeText(finding.state, "unknown")}
+                          sx={{
+                            textTransform: "capitalize",
+                            bgcolor: `${findingColor}1a`,
+                            color: findingColor,
+                            border: `1px solid ${findingColor}33`,
+                            fontWeight: 700,
+                          }}
+                        />
+                      </Stack>
+                    </Box>
+                  );
+                })}
               </Stack>
             </Box>
 
             <Box sx={{ display: "grid", gap: 1.1, gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" } }}>
               {[
-                { label: "Hosts scanned", value: result.scanType === "full" ? "1" : "1" },
+                { label: "Hosts scanned", value: "1" },
                 { label: "Open ports", value: String(result.findings.filter((finding) => finding.state === "open").length) },
                 { label: "Critical", value: String(result.findings.filter((finding) => finding.risk === "high").length) },
               ].map((item) => (
@@ -409,7 +638,7 @@ function NmapPage() {
                   <Typography variant="caption" color="text.secondary">
                     {item.label}
                   </Typography>
-                  <Typography variant="h5" fontWeight={700} sx={{ mt: 0.4 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.4 }}>
                     {item.value}
                   </Typography>
                 </Box>
@@ -417,7 +646,12 @@ function NmapPage() {
             </Box>
 
             <Button
-              onClick={() => setResult(null)}
+              onClick={() => {
+                clearTimers();
+                updateScanPhase("idle");
+                setResult(null);
+                setElapsed(0);
+              }}
               fullWidth
               startIcon={<ShieldOutlinedIcon />}
               sx={{
@@ -436,7 +670,7 @@ function NmapPage() {
           </Box>
         )}
 
-        <Stack direction="row" spacing={1.2} justifyContent="center" sx={{ mt: 3.5, flexWrap: "wrap" }}>
+        <Stack direction="row" spacing={1.2} sx={{ justifyContent: "center", mt: 3.5, flexWrap: "wrap" }}>
           {[
             "Host discovery",
             "Port analysis",

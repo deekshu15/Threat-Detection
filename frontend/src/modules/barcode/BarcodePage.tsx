@@ -4,6 +4,7 @@ import CameraAltOutlinedIcon from "@mui/icons-material/CameraAltOutlined";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import FileUploadOutlinedIcon from "@mui/icons-material/FileUploadOutlined";
+import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import { Box, Button, Chip, Divider, Stack, Typography } from "@mui/material";
 
@@ -41,16 +42,24 @@ function formatSeverity(severity: Severity) {
   return "Low";
 }
 
-function severityColor(severity: Severity) {
+function severityColor(severity: Severity | string | null | undefined) {
   if (severity === "high") {
     return "#fb7185";
   }
 
-  if (severity === "medium") {
+  if (severity === "medium" || severity === "critical") {
     return "#fbbf24";
   }
 
-  return "#34d399";
+  if (severity === "low") {
+    return "#34d399";
+  }
+
+  if (severity === "info") {
+    return "#60a5fa";
+  }
+
+  return "#7c8aa5";
 }
 
 function severityScore(severity: Severity) {
@@ -147,6 +156,41 @@ function loadImage(source: string) {
   });
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error("Barcode scan timed out. The scanner did not respond within the expected time."));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+function validateImageFile(file: File | null | undefined): string | null {
+  if (!file) {
+    return "Please upload a valid image file.";
+  }
+
+  if (!file.type.startsWith("image/")) {
+    return "Please upload a valid image file.";
+  }
+
+  if (file.size <= 0) {
+    return "The selected file appears to be empty.";
+  }
+
+  return null;
+}
+
 function scoreForFindings(findings: Finding[]) {
   return Math.min(findings.reduce((sum, finding) => sum + severityScore(finding.severity), 0), 100);
 }
@@ -183,7 +227,7 @@ function BarcodePage() {
       mountedRef.current = false;
       controlsRef.current?.stop();
       controlsRef.current = null;
-      scannerRef.current?.reset();
+      scannerRef.current = null;
       if (previewUrlRef.current) {
         URL.revokeObjectURL(previewUrlRef.current);
       }
@@ -193,7 +237,7 @@ function BarcodePage() {
   const stopCameraScan = () => {
     controlsRef.current?.stop();
     controlsRef.current = null;
-    scannerRef.current?.reset();
+    scannerRef.current = null;
     if (mountedRef.current) {
       setIsScanning(false);
     }
@@ -258,7 +302,18 @@ function BarcodePage() {
     }
   };
 
-  const scanFile = async (file: File) => {
+  const scanFile = async (file: File | null | undefined) => {
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      setScanError(validationError);
+      return;
+    }
+
+    if (!file) {
+      setScanError("Please upload a valid image file.");
+      return;
+    }
+
     setMode("upload");
     setScanError("");
     setScanResult(null);
@@ -278,7 +333,7 @@ function BarcodePage() {
       const image = await loadImage(objectUrl);
       const reader = new BrowserMultiFormatReader();
       scannerRef.current = reader;
-      const result = await reader.decodeFromImageElement(image);
+      const result = await withTimeout(reader.decodeFromImageElement(image), 45000);
       const payload = result.getText();
       const format = getBarcodeFormatName(result.getBarcodeFormat());
       const findings = buildFindings(payload, format);
@@ -315,11 +370,6 @@ function BarcodePage() {
     const file = event.target.files?.[0];
 
     if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith("image/")) {
-      setScanError("Select a valid image file.");
       return;
     }
 
@@ -391,9 +441,9 @@ function BarcodePage() {
               },
             }}
           >
-            <Stack spacing={1.2} alignItems="center">
+            <Stack spacing={1.2} sx={{ alignItems: "center" }}>
               <CameraAltOutlinedIcon sx={{ fontSize: 28, color: "#e5e7eb" }} />
-              <Typography fontWeight={700}>Camera Scan</Typography>
+              <Typography sx={{ fontWeight: 700 }}>Camera Scan</Typography>
             </Stack>
           </Box>
 
@@ -415,9 +465,9 @@ function BarcodePage() {
               },
             }}
           >
-            <Stack spacing={1.2} alignItems="center">
+            <Stack spacing={1.2} sx={{ alignItems: "center" }}>
               <FileUploadOutlinedIcon sx={{ fontSize: 28, color: "#e5e7eb" }} />
-              <Typography fontWeight={700}>Upload Image</Typography>
+              <Typography sx={{ fontWeight: 700 }}>Upload Image</Typography>
             </Stack>
           </Box>
         </Box>
@@ -523,7 +573,7 @@ function BarcodePage() {
           <Box sx={{ mt: 3, display: "grid", gap: 2.2 }}>
             <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.2, alignItems: "center", justifyContent: "space-between" }}>
               <Box>
-                <Typography variant="subtitle1" fontWeight={700}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Scan result
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4 }}>
@@ -598,14 +648,14 @@ function BarcodePage() {
                       border: "1px solid rgba(255,255,255,0.05)",
                     }}
                   >
-                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap">
-                      <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                         {finding.severity === "high" ? (
                           <WarningAmberRoundedIcon sx={{ color: severityColor(finding.severity) }} fontSize="small" />
                         ) : (
                           <CheckCircleRoundedIcon sx={{ color: severityColor(finding.severity) }} fontSize="small" />
                         )}
-                        <Typography variant="body2" fontWeight={700}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
                           {finding.title}
                         </Typography>
                       </Stack>
@@ -631,7 +681,7 @@ function BarcodePage() {
           </Box>
         )}
 
-        <Stack direction="row" spacing={1.2} justifyContent="center" sx={{ mt: 3.5, flexWrap: "wrap" }}>
+        <Stack direction="row" spacing={1.2} sx={{ justifyContent: "center", mt: 3.5, flexWrap: "wrap" }}>
           {[
             "Camera scan",
             "Upload image",

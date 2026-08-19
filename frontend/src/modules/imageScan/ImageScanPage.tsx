@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import InsertPhotoOutlinedIcon from "@mui/icons-material/InsertPhotoOutlined";
+import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
@@ -32,6 +33,11 @@ type ScanResult = {
   findings: Finding[];
 };
 
+const SCAN_TIMEOUT_MS = 45000;
+const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
+
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/avif", "image/tiff"];
+
 function formatBytes(bytes: number) {
   if (bytes < 1024) {
     return `${bytes} B`;
@@ -55,14 +61,20 @@ function severityLabel(severity: Severity) {
   return "Low";
 }
 
-function severityColor(severity: Severity) {
+function severityColor(severity: Severity | string | null | undefined) {
   if (severity === "high") {
     return "#fb7185";
   }
-  if (severity === "medium") {
+  if (severity === "medium" || severity === "critical") {
     return "#fbbf24";
   }
-  return "#34d399";
+  if (severity === "low") {
+    return "#34d399";
+  }
+  if (severity === "info") {
+    return "#60a5fa";
+  }
+  return "#7c8aa5";
 }
 
 function scoreImpact(severity: Severity) {
@@ -122,6 +134,49 @@ async function loadImage(source: string) {
   });
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error("Image scan timed out. The scanner did not respond within the expected time."));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+function validateImageFile(file: File | null | undefined): string | null {
+  if (!file) {
+    return "Please upload a valid image file.";
+  }
+
+  if (!file.type.startsWith("image/")) {
+    return "Please upload a valid image file.";
+  }
+
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    return "Unsupported image format. Please use JPEG, PNG, WebP, GIF, BMP, AVIF, or TIFF.";
+  }
+
+  if (file.size <= 0) {
+    return "The selected file appears to be empty.";
+  }
+
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return "Image is too large. Maximum allowed size is 15 MB.";
+  }
+
+  return null;
+}
+
 async function scanImage(file: File): Promise<ScanResult> {
   const objectUrl = URL.createObjectURL(file);
   try {
@@ -131,6 +186,10 @@ async function scanImage(file: File): Promise<ScanResult> {
 
     if (!context) {
       throw new Error("Canvas context is unavailable.");
+    }
+
+    if (!image.naturalWidth || !image.naturalHeight) {
+      throw new Error("The selected image could not be decoded.");
     }
 
     canvas.width = image.naturalWidth;
@@ -255,17 +314,35 @@ function ImageScanPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [result, setResult] = useState<ScanResult | null>(null);
 
+  const scanningRef = useRef(false);
+  const mountedRef = useRef(true);
+
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
+      mountedRef.current = false;
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
       }
     };
   }, [previewUrl]);
 
-  const handleFile = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      setErrorMessage("Select a valid image file.");
+  const handleFile = async (file: File | null | undefined) => {
+    if (scanningRef.current) {
+      return;
+    }
+
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      setErrorMessage(validationError);
+      setSelectedFile(null);
+      setResult(null);
+      return;
+    }
+
+    if (!file) {
+      setErrorMessage("Please upload a valid image file.");
       return;
     }
 
@@ -273,6 +350,7 @@ function ImageScanPage() {
     setSelectedFile(file);
     setResult(null);
     setIsScanning(true);
+    scanningRef.current = true;
 
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
@@ -282,12 +360,25 @@ function ImageScanPage() {
     setPreviewUrl(nextPreviewUrl);
 
     try {
-      const scan = await scanImage(file);
-      setResult(scan);
+      const scan = await withTimeout(scanImage(file), SCAN_TIMEOUT_MS);
+      if (mountedRef.current) {
+        setResult(scan);
+      }
     } catch (scanError) {
-      setErrorMessage(scanError instanceof Error ? scanError.message : "Unable to scan this image.");
+      if (mountedRef.current) {
+        setErrorMessage(scanError instanceof Error ? scanError.message : "Unable to scan this image.");
+      }
     } finally {
-      setIsScanning(false);
+      scanningRef.current = false;
+      if (mountedRef.current) {
+        setIsScanning(false);
+      }
+    }
+  };
+
+  const retryScan = () => {
+    if (selectedFile) {
+      void handleFile(selectedFile);
     }
   };
 
@@ -386,7 +477,7 @@ function ImageScanPage() {
           <input ref={inputRef} type="file" accept="image/*" hidden onChange={handleInputChange} />
 
           {selectedFile ? (
-            <Stack spacing={1.2} alignItems="center">
+            <Stack spacing={1.2} sx={{ alignItems: "center" }}>
               <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1.2, color: "#8ba0c8" }}>
                 <InsertPhotoOutlinedIcon sx={{ fontSize: 42 }} />
               </Box>
@@ -395,7 +486,7 @@ function ImageScanPage() {
               </Typography>
             </Stack>
           ) : (
-            <Stack spacing={1.2} alignItems="center">
+            <Stack spacing={1.2} sx={{ alignItems: "center" }}>
               <Box sx={{ display: "inline-flex", alignItems: "center", color: "#6f87a8" }}>
                 <InsertPhotoOutlinedIcon sx={{ fontSize: 42 }} />
               </Box>
@@ -407,10 +498,37 @@ function ImageScanPage() {
         {(errorMessage || result) && <Divider sx={{ my: 3, borderColor: "rgba(255,255,255,0.08)" }} />}
 
         {errorMessage && (
-          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.18)" }}>
-            <Typography variant="body2" sx={{ color: "#fca5a5" }}>
-              {errorMessage}
-            </Typography>
+          <Box>
+            <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.18)" }}>
+              <Typography variant="body2" sx={{ color: "#fca5a5" }}>
+                {errorMessage}
+              </Typography>
+            </Box>
+
+            {selectedFile && !isScanning && (
+              <Button
+                onClick={retryScan}
+                fullWidth
+                startIcon={<ReplayRoundedIcon />}
+                sx={{
+                  mt: 1.5,
+                  minHeight: 38,
+                  borderRadius: 3,
+                  textTransform: "none",
+                  fontWeight: 700,
+                  fontSize: "0.9rem",
+                  color: "#fde68a",
+                  bgcolor: "rgba(245, 158, 11, 0.08)",
+                  border: "1px solid rgba(245, 158, 11, 0.2)",
+                  "&:hover": {
+                    bgcolor: "rgba(245, 158, 11, 0.14)",
+                    borderColor: "rgba(245, 158, 11, 0.32)",
+                  },
+                }}
+              >
+                Retry Scan
+              </Button>
+            )}
           </Box>
         )}
 
@@ -418,7 +536,7 @@ function ImageScanPage() {
           <Box sx={{ display: "grid", gap: 2.2 }}>
             <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.2, alignItems: "center", justifyContent: "space-between" }}>
               <Box>
-                <Typography variant="subtitle1" fontWeight={700}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Scan result
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4 }}>
@@ -500,14 +618,14 @@ function ImageScanPage() {
                       border: "1px solid rgba(255,255,255,0.05)",
                     }}
                   >
-                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap">
-                      <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                         {finding.severity === "high" ? (
                           <WarningAmberRoundedIcon sx={{ color: severityColor(finding.severity) }} fontSize="small" />
                         ) : (
                           <CheckCircleRoundedIcon sx={{ color: severityColor(finding.severity) }} fontSize="small" />
                         )}
-                        <Typography variant="body2" fontWeight={700}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
                           {finding.title}
                         </Typography>
                       </Stack>
@@ -548,7 +666,7 @@ function ImageScanPage() {
           </Box>
         )}
 
-        <Stack direction="row" spacing={1.2} justifyContent="center" sx={{ mt: 3.5, flexWrap: "wrap" }}>
+        <Stack direction="row" spacing={1.2} sx={{ justifyContent: "center", mt: 3.5, flexWrap: "wrap" }}>
           {[
             "QR decoding",
             "EXIF review",
