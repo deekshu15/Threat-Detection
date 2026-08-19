@@ -8,6 +8,7 @@ import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import { Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
 
 import GlassSurface from "../../components/ui/GlassSurface";
+import { saveSecurityEvent } from "../shared/eventsService";
 
 type ScanType = "quick" | "full" | "syn" | "service";
 
@@ -272,6 +273,27 @@ function NmapPage() {
             status: getStatus(score, findings),
           });
           updateScanPhase("completed");
+
+          for (const finding of findings) {
+            if (finding.state === "open" || finding.risk === "high") {
+              void saveSecurityEvent({
+                event_id: `nmap-${Date.now()}-${finding.port}`,
+                timestamp: new Date().toISOString(),
+                source: "Nmap",
+                tool: "Nmap",
+                target: trimmedTarget,
+                attack_type: "Port Exposure",
+                severity: finding.risk === "high" ? "High" : "Medium",
+                risk_score: finding.risk === "high" ? 78 : 45,
+                status: finding.state,
+                port: finding.port,
+                protocol: finding.protocol,
+                service: finding.service,
+                description: `${finding.service} is ${finding.state} on ${finding.port}/${finding.protocol}`,
+                recommendation: `Review whether ${finding.service} exposure is required and restrict access using appropriate network controls.`,
+              });
+            }
+          }
         } catch {
           clearTimers();
           updateScanPhase("failed");

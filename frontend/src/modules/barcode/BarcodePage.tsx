@@ -11,7 +11,10 @@ import { Box, Button, Chip, Divider, Stack, Typography } from "@mui/material";
 import { BarcodeFormat } from "@zxing/library";
 import { BrowserCodeReader, BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 
+import BarcodeWorker from "../../workers/barcode.worker?worker";
+
 import GlassSurface from "../../components/ui/GlassSurface";
+import { saveSecurityEvent } from "../shared/eventsService";
 
 type Severity = "low" | "medium" | "high";
 
@@ -156,25 +159,6 @@ function loadImage(source: string) {
   });
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new Error("Barcode scan timed out. The scanner did not respond within the expected time."));
-    }, ms);
-
-    promise.then(
-      (value) => {
-        window.clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        window.clearTimeout(timer);
-        reject(error);
-      }
-    );
-  });
-}
-
 function validateImageFile(file: File | null | undefined): string | null {
   if (!file) {
     return "Please upload a valid image file.";
@@ -212,8 +196,10 @@ function BarcodePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scannerRef = useRef<BrowserMultiFormatReader | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
+  const workerRef = useRef<Worker | null>(null);
   const mountedRef = useRef(true);
   const previewUrlRef = useRef<string>("");
+  const workerTimerRef = useRef<number | null>(null);
 
   const [mode, setMode] = useState<"idle" | "camera" | "upload">("idle");
   const [isScanning, setIsScanning] = useState(false);
@@ -230,6 +216,14 @@ function BarcodePage() {
       scannerRef.current = null;
       if (previewUrlRef.current) {
         URL.revokeObjectURL(previewUrlRef.current);
+      }
+      if (workerTimerRef.current) {
+        window.clearTimeout(workerTimerRef.current);
+        workerTimerRef.current = null;
+      }
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
       }
     };
   }, []);
@@ -302,6 +296,69 @@ function BarcodePage() {
     }
   };
 
+  const decodeImageWithWorker = (image: HTMLImageElement): Promise<{ text: string; format: string }> => {
+    return new Promise((resolve, reject) => {
+      const worker = new BarcodeWorker();
+      workerRef.current = worker;
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        worker.terminate();
+        workerRef.current = null;
+        return reject(new Error("Canvas context is unavailable."));
+      }
+
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      ctx.drawImage(image, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      const timeoutMs = 20000;
+      const timer = window.setTimeout(() => {
+        worker.terminate();
+        workerRef.current = null;
+        reject(new Error("Barcode scan timed out. The scanner did not respond within the expected time."));
+      }, timeoutMs);
+      workerTimerRef.current = timer;
+
+      worker.onmessage = (event) => {
+        if (workerTimerRef.current) {
+          window.clearTimeout(workerTimerRef.current);
+          workerTimerRef.current = null;
+        }
+        worker.terminate();
+        workerRef.current = null;
+
+        const { success, text, format, error } = event.data;
+        if (success) {
+          resolve({ text, format });
+        } else {
+          reject(new Error(error || "No barcode or QR code was detected."));
+        }
+      };
+
+      worker.onerror = () => {
+        if (workerTimerRef.current) {
+          window.clearTimeout(workerTimerRef.current);
+          workerTimerRef.current = null;
+        }
+        worker.terminate();
+        workerRef.current = null;
+        reject(new Error("Barcode scan failed due to an internal error."));
+      };
+
+      worker.postMessage(
+        {
+          buffer: imageData.data.buffer,
+          width: canvas.width,
+          height: canvas.height,
+        },
+        [imageData.data.buffer]
+      );
+    });
+  };
+
   const scanFile = async (file: File | null | undefined) => {
     const validationError = validateImageFile(file);
     if (validationError) {
@@ -331,12 +388,10 @@ function BarcodePage() {
 
     try {
       const image = await loadImage(objectUrl);
-      const reader = new BrowserMultiFormatReader();
-      scannerRef.current = reader;
-      const result = await withTimeout(reader.decodeFromImageElement(image), 45000);
-      const payload = result.getText();
-      const format = getBarcodeFormatName(result.getBarcodeFormat());
-      const findings = buildFindings(payload, format);
+      const { text, format } = await decodeImageWithWorker(image);
+      const payload = text;
+      const barcodeFormat = getBarcodeFormatName(format);
+      const findings = buildFindings(payload, barcodeFormat);
       const score = scoreForFindings(findings);
 
       if (!mountedRef.current) {
@@ -345,12 +400,28 @@ function BarcodePage() {
 
       setScanResult({
         payload,
-        format,
+        format: barcodeFormat,
         source: "upload",
         score,
         verdict: getVerdict(score),
         findings,
       });
+
+      const highFindings = findings.filter((f) => f.severity === "high");
+      if (highFindings.length > 0) {
+        void saveSecurityEvent({
+          event_id: `barcode-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          source: "Barcode Scanner",
+          tool: "Barcode Scanner",
+          attack_type: highFindings[0].title,
+          severity: "High",
+          risk_score: score,
+          status: getVerdict(score),
+          description: highFindings.map((f) => f.detail).join(" | "),
+          recommendation: "Review the decoded barcode content before interacting with it.",
+        });
+      }
     } catch (error) {
       if (mountedRef.current) {
         setScanError(error instanceof Error ? error.message : "No barcode or QR code was detected.");

@@ -30,6 +30,7 @@ from local_api.services.dashboard_service import (
     DashboardService,
     DashboardDataError,
 )
+from local_api.services.events_service import events_service
 
 import logging
 from datetime import datetime, timezone
@@ -653,3 +654,62 @@ async def upload_file(file: UploadFile = File(...)):
             status_code=500,
             detail="Internal Server Error",
         )
+
+
+# --------------------------------------------------
+# Security Events API
+# --------------------------------------------------
+
+from pydantic import BaseModel  # noqa: E402
+
+
+class SecurityEventRequest(BaseModel):
+    event_id: str = ""
+    timestamp: str = ""
+    source: str = ""
+    tool: str | None = None
+    target: str | None = None
+    source_ip: str | None = None
+    destination_ip: str | None = None
+    country: str | None = None
+    attack_type: str | None = None
+    severity: str | None = None
+    risk_score: int | None = None
+    status: str | None = None
+    port: int | None = None
+    protocol: str | None = None
+    service: str | None = None
+    description: str | None = None
+    recommendation: str | None = None
+
+
+@app.post("/api/events")
+def save_security_event(payload: SecurityEventRequest):
+    try:
+        event = events_service.save_event(
+            SecurityEvent(**payload.model_dump())
+        )
+        return {"success": True, "event": event.model_dump()}
+    except Exception as exc:
+        logger.exception("Failed to save security event")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/events")
+def get_security_events(limit: int = 100):
+    try:
+        events = events_service.get_events(limit=limit)
+        return {"success": True, "events": events}
+    except Exception as exc:
+        logger.exception("Failed to load security events")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/analytics")
+def get_analytics():
+    try:
+        analytics = events_service.get_analytics()
+        return {"success": True, **analytics}
+    except Exception as exc:
+        logger.exception("Failed to compute analytics")
+        raise HTTPException(status_code=500, detail=str(exc))

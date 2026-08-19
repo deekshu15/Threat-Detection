@@ -81,10 +81,10 @@ function NiktoPage() {
     }
 
     if (scanState === "connected") {
-      return "Connected";
+      return "Simulation Mode";
     }
 
-    return "Not Connected";
+    return "Not Configured";
   }, [scanState]);
 
   const handleRunScan = () => {

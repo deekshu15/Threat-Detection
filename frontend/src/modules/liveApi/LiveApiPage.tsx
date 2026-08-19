@@ -8,6 +8,8 @@ import { Box, Button, MenuItem, TextField, Typography } from "@mui/material";
 
 const refreshIntervals = [5, 10, 15, 30];
 
+type ConnectionStatus = "not_configured" | "unverified" | "connected" | "auth_failed" | "connection_failed";
+
 function isHttpEndpoint(value: string) {
   try {
     const url = new URL(value);
@@ -36,6 +38,7 @@ function LiveApiPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
   const [validationMessage, setValidationMessage] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("not_configured");
 
   useEffect(() => {
     if (!isStreaming) {
@@ -53,30 +56,101 @@ function LiveApiPage() {
     };
   }, [isStreaming, refreshInterval]);
 
-  const handleToggleStream = () => {
+  const verifyConnection = async (): Promise<ConnectionStatus> => {
+    const trimmedEndpoint = endpoint.trim();
+    const trimmedKey = apiKey.trim();
+
+    if (!trimmedEndpoint || !trimmedKey) {
+      return "not_configured";
+    }
+
+    if (!isHttpEndpoint(trimmedEndpoint)) {
+      setValidationMessage("Enter a valid http or https endpoint.");
+      return "connection_failed";
+    }
+
+    setValidationMessage("");
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(trimmedEndpoint, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${trimmedKey}`,
+          "Accept": "application/json",
+        },
+        signal: controller.signal,
+      });
+
+      window.clearTimeout(timeoutId);
+
+      if (response.status === 401 || response.status === 403) {
+        return "auth_failed";
+      }
+
+      if (response.ok) {
+        return "connected";
+      }
+
+      return "connection_failed";
+    } catch {
+      return "connection_failed";
+    }
+  };
+
+  const handleToggleStream = async () => {
     if (isStreaming) {
       setIsStreaming(false);
+      setConnectionStatus("not_configured");
       setValidationMessage("");
       return;
     }
 
-    if (!isHttpEndpoint(endpoint.trim())) {
-      setValidationMessage("Enter a valid http or https endpoint.");
-      return;
-    }
+    const status = await verifyConnection();
+    setConnectionStatus(status);
 
-    if (!apiKey.trim()) {
-      setValidationMessage("Enter an API key before starting the stream.");
-      return;
+    if (status === "connected") {
+      setIsStreaming(true);
+    } else if (status === "not_configured") {
+      setValidationMessage("Enter an API endpoint and key before starting the stream.");
+    } else if (status === "auth_failed") {
+      setValidationMessage("Authentication failed. Check your API key.");
+    } else if (status === "connection_failed") {
+      setValidationMessage("Connection failed. The endpoint could not be reached.");
     }
-
-    setValidationMessage("");
-    setIsStreaming(true);
   };
 
-  const statusLabel = isStreaming ? "Connected" : "Disconnected";
-  const statusColor = isStreaming ? "#2dd4bf" : "#f04444";
-  const statusGlow = isStreaming ? "rgba(45, 212, 191, 0.28)" : "rgba(240, 68, 68, 0.28)";
+  const statusLabel = (() => {
+    if (!isStreaming) {
+      if (connectionStatus === "auth_failed") return "Authentication Failed";
+      if (connectionStatus === "connection_failed") return "Connection Failed";
+      if (connectionStatus === "connected") return "Connected";
+      if (connectionStatus === "not_configured") return "Not Configured";
+      return "Unverified";
+    }
+    if (connectionStatus === "connected") return "Connected";
+    if (connectionStatus === "auth_failed") return "Authentication Failed";
+    if (connectionStatus === "connection_failed") return "Connection Failed";
+    return "Unverified";
+  })();
+
+  const statusColor = (() => {
+    if (statusLabel === "Connected") return "#2dd4bf";
+    if (statusLabel === "Authentication Failed") return "#fbbf24";
+    if (statusLabel === "Connection Failed") return "#f04444";
+    if (statusLabel === "Not Configured") return "#6f87a8";
+    return "#fbbf24";
+  })();
+
+  const statusGlow = (() => {
+    if (statusLabel === "Connected") return "rgba(45, 212, 191, 0.28)";
+    if (statusLabel === "Authentication Failed") return "rgba(251, 191, 36, 0.28)";
+    if (statusLabel === "Connection Failed") return "rgba(240, 68, 68, 0.28)";
+    return "rgba(111, 135, 168, 0.28)";
+  })();
+
   const buttonLabel = isStreaming ? "Stop Stream" : "Start Stream";
 
   return (
@@ -315,7 +389,7 @@ function LiveApiPage() {
             </Box>
 
             <Box sx={{ ml: "auto", color: isStreaming ? "#9fe9de" : "#9fb5d1", display: "flex", alignItems: "center", gap: 0.75 }}>
-              {isStreaming ? <RadioButtonCheckedOutlinedIcon sx={{ fontSize: 18 }} /> : <WifiOffRoundedIcon sx={{ fontSize: 18 }} />}
+              {isStreaming && statusLabel === "Connected" ? <RadioButtonCheckedOutlinedIcon sx={{ fontSize: 18 }} /> : <WifiOffRoundedIcon sx={{ fontSize: 18 }} />}
             </Box>
           </Box>
         </Box>

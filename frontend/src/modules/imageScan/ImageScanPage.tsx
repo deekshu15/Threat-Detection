@@ -11,6 +11,7 @@ import jsQR from "jsqr";
 import exifr from "exifr";
 
 import GlassSurface from "../../components/ui/GlassSurface";
+import { saveSecurityEvent } from "../shared/eventsService";
 
 type Severity = "low" | "medium" | "high";
 
@@ -363,6 +364,21 @@ function ImageScanPage() {
       const scan = await withTimeout(scanImage(file), SCAN_TIMEOUT_MS);
       if (mountedRef.current) {
         setResult(scan);
+        const highFindings = scan.findings.filter((f) => f.severity === "high");
+        if (highFindings.length > 0) {
+          void saveSecurityEvent({
+            event_id: `img-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            source: "Image Scanner",
+            tool: "Image Scanner",
+            attack_type: highFindings[0].title,
+            severity: "High",
+            risk_score: scan.score,
+            status: scan.verdict,
+            description: highFindings.map((f) => f.detail).join(" | "),
+            recommendation: "Review the image and its embedded content before sharing or opening.",
+          });
+        }
       }
     } catch (scanError) {
       if (mountedRef.current) {
