@@ -1,76 +1,30 @@
 import { type AnalyticsData, getSecurityEvents } from "../../shared/eventsService";
 
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  "http://127.0.0.1:8000";
+
 const delay = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-async function computeAnalytics(): Promise<AnalyticsData> {
-  const events = await getSecurityEvents(500);
-  const totalEvents = events.length;
-
-  const severityCounts: Record<string, number> = {};
-  const attackTypeCounts: Record<string, number> = {};
-  const toolCounts: Record<string, number> = {};
-  let riskSum = 0;
-  let riskCount = 0;
-
-  for (const event of events) {
-    severityCounts[event.severity || "Unknown"] = (severityCounts[event.severity || "Unknown"] || 0) + 1;
-
-    if (event.attack_type) {
-      attackTypeCounts[event.attack_type] = (attackTypeCounts[event.attack_type] || 0) + 1;
-    }
-
-    if (event.tool) {
-      toolCounts[event.tool] = (toolCounts[event.tool] || 0) + 1;
-    }
-
-    if (typeof event.risk_score === "number") {
-      riskSum += event.risk_score;
-      riskCount += 1;
-    }
+async function fetchAnalytics(): Promise<AnalyticsData> {
+  const response = await fetch(`${API_BASE}/api/analytics`);
+  if (!response.ok) {
+    throw new Error("Failed to load analytics from server.");
   }
-
-  const criticalEvents = severityCounts["Critical"] || 0;
-  const highEvents = severityCounts["High"] || 0;
-  const mediumEvents = severityCounts["Medium"] || 0;
-  const lowEvents = severityCounts["Low"] || 0;
-
-  const severityDistribution = Object.entries(severityCounts)
-    .map(([severity, count]) => ({ severity, count }))
-    .sort((a, b) => b.count - a.count);
-
-  const attackTypeFrequency = Object.entries(attackTypeCounts)
-    .map(([attack_type, count]) => ({ attack_type, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-
-  const toolDistribution = Object.entries(toolCounts)
-    .map(([tool, count]) => ({ tool, count }))
-    .sort((a, b) => b.count - a.count);
-
-  return {
-    success: true,
-    total_events: totalEvents,
-    critical_events: criticalEvents,
-    high_events: highEvents,
-    medium_events: mediumEvents,
-    low_events: lowEvents,
-    average_risk_score: riskCount > 0 ? Math.round((riskSum / riskCount) * 100) / 100 : 0,
-    severity_distribution: severityDistribution,
-    attack_type_frequency: attackTypeFrequency,
-    tool_distribution: toolDistribution,
-  };
+  return response.json();
 }
+
 
 const analyticsService = {
   async getAnalytics() {
     await delay(200);
-    return computeAnalytics();
+    return fetchAnalytics();
   },
 
   async getExecutiveMetrics() {
     await delay(200);
-    const analytics = await computeAnalytics();
+    const analytics = await fetchAnalytics();
     return [
       { title: "Total Threats", value: analytics.total_events.toLocaleString(), trend: 0 },
       { title: "Critical Alerts", value: String(analytics.critical_events), trend: 0 },
@@ -113,7 +67,7 @@ const analyticsService = {
 
   async getAttackCategories() {
     await delay(200);
-    const analytics = await computeAnalytics();
+    const analytics = await fetchAnalytics();
     return analytics.attack_type_frequency.slice(0, 10);
   },
 
