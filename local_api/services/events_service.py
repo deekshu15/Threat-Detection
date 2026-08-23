@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -69,7 +70,7 @@ class EventsService:
             return []
 
         df = df.sort_values("timestamp", ascending=False).head(limit)
-        return df.where(pd.notna(df), None).to_dict(orient="records")
+        return json.loads(df.to_json(orient="records"))
 
     def get_analytics(self) -> dict[str, Any]:
         if not self.events_file.exists():

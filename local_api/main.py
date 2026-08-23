@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import time
 import logging
-from fastapi import FastAPI, logger
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi import HTTPException
@@ -31,10 +31,13 @@ from local_api.services.dashboard_service import (
     DashboardDataError,
 )
 from local_api.services.events_service import events_service
+from local_api.models.event import SecurityEvent
 
 import logging
 from datetime import datetime, timezone
 from local_api.models.request import ThreatAnalysisRequest
+
+logger = logging.getLogger("local_api.main")
 # --------------------------------------------------
 # Threat Analysis Request Model
 # --------------------------------------------------
