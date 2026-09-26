@@ -81,7 +81,7 @@ function SignUpPage() {
         </Stack>
 
         {step === "register" ? (
-          <form onSubmit={handleRegister}>
+          <form onSubmit={handleRegister} style={{ display: "block", marginTop: 20 }}>
             <Stack spacing={2.5}>
               {error && <Alert severity="error">{error}</Alert>}
 
@@ -102,7 +102,7 @@ function SignUpPage() {
             </Stack>
           </form>
         ) : (
-          <form onSubmit={handleConfirm}>
+          <form onSubmit={handleConfirm} style={{ display: "block", marginTop: 20 }}>
             <Stack spacing={2.5}>
               {error && <Alert severity="error">{error}</Alert>}
 

@@ -179,6 +179,25 @@ function scoreForFindings(findings: Finding[]) {
   return Math.min(findings.reduce((sum, finding) => sum + severityScore(finding.severity), 0), 100);
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error("Barcode scan timed out. Try a clearer or closer image."));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
+}
+
 function getVerdict(score: number) {
   if (score >= 50) {
     return "High risk";
@@ -251,6 +270,14 @@ function BarcodePage() {
       stopCameraScan();
       setIsScanning(true);
 
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => resolve());
+      });
+
+      if (!videoRef.current) {
+        throw new Error("Camera preview could not be initialized. Please try again.");
+      }
+
       const reader = new BrowserMultiFormatReader();
       scannerRef.current = reader;
       const videoDevices = await BrowserCodeReader.listVideoInputDevices();
@@ -261,7 +288,7 @@ function BarcodePage() {
         throw new Error("No video input device found.");
       }
 
-      const controls = await reader.decodeFromVideoDevice(preferredDeviceId, videoRef.current ?? undefined, (result, error, scannerControls) => {
+      const controls = await reader.decodeFromVideoDevice(preferredDeviceId, videoRef.current, (result, error, scannerControls) => {
         if (error) {
           return;
         }
@@ -296,7 +323,7 @@ function BarcodePage() {
     }
   };
 
-  const decodeImageWithWorker = (image: HTMLImageElement): Promise<{ text: string; format: string }> => {
+  const decodeImageWithWorker = (image: HTMLImageElement): Promise<{ text: string; format: BarcodeFormat }> => {
     return new Promise((resolve, reject) => {
       const worker = new BarcodeWorker();
       workerRef.current = worker;
@@ -314,7 +341,7 @@ function BarcodePage() {
       ctx.drawImage(image, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      const timeoutMs = 20000;
+      const timeoutMs = 8000;
       const timer = window.setTimeout(() => {
         worker.terminate();
         workerRef.current = null;
@@ -348,14 +375,24 @@ function BarcodePage() {
         reject(new Error("Barcode scan failed due to an internal error."));
       };
 
-      worker.postMessage(
-        {
-          buffer: imageData.data.buffer,
-          width: canvas.width,
-          height: canvas.height,
-        },
-        [imageData.data.buffer]
-      );
+      try {
+        worker.postMessage(
+          {
+            buffer: imageData.data.buffer,
+            width: canvas.width,
+            height: canvas.height,
+          },
+          [imageData.data.buffer]
+        );
+      } catch (error) {
+        if (workerTimerRef.current) {
+          window.clearTimeout(workerTimerRef.current);
+          workerTimerRef.current = null;
+        }
+        worker.terminate();
+        workerRef.current = null;
+        reject(error instanceof Error ? error : new Error("Barcode worker could not start."));
+      }
     });
   };
 
@@ -375,8 +412,8 @@ function BarcodePage() {
     setScanError("");
     setScanResult(null);
     setSelectedFileName(file.name);
-    setIsScanning(true);
     stopCameraScan();
+    setIsScanning(true);
 
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current);
@@ -388,7 +425,18 @@ function BarcodePage() {
 
     try {
       const image = await loadImage(objectUrl);
-      const { text, format } = await decodeImageWithWorker(image);
+      let text: string;
+      let format: BarcodeFormat;
+
+      try {
+        const directReader = new BrowserMultiFormatReader();
+        const directResult = await withTimeout(directReader.decodeFromImageElement(image), 5000);
+        text = directResult.getText();
+        format = directResult.getBarcodeFormat();
+      } catch {
+        ({ text, format } = await withTimeout(decodeImageWithWorker(image), 10000));
+      }
+
       const payload = text;
       const barcodeFormat = getBarcodeFormatName(format);
       const findings = buildFindings(payload, barcodeFormat);
@@ -439,6 +487,7 @@ function BarcodePage() {
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
 
     if (!file) {
       return;
@@ -564,6 +613,7 @@ function BarcodePage() {
                 style={{ width: "100%", height: "100%", minHeight: 240, objectFit: "cover", display: "block" }}
                 muted
                 playsInline
+                autoPlay
               />
 
               {!isScanning && !scanResult && (

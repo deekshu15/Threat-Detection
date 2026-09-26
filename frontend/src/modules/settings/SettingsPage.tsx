@@ -4,7 +4,7 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import NotificationsActiveRoundedIcon from "@mui/icons-material/NotificationsActiveRounded";
 import SecurityRoundedIcon from "@mui/icons-material/SecurityRounded";
 import StorageRoundedIcon from "@mui/icons-material/StorageRounded";
-import { Box, Button, Chip, Stack, Switch, Typography } from "@mui/material";
+import { Box, Button, MenuItem, Stack, Switch, TextField, Typography } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 
 import { authService } from "../../auth/authService";
@@ -46,6 +46,7 @@ function readSettings(): SettingsState {
 function SettingsPage() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setSettings(readSettings());
@@ -53,6 +54,9 @@ function SettingsPage() {
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    setSaved(true);
+    const timeoutId = window.setTimeout(() => setSaved(false), 1200);
+    return () => window.clearTimeout(timeoutId);
   }, [settings]);
 
   const updateSettings = (patch: Partial<SettingsState>) => {
@@ -135,14 +139,26 @@ function SettingsPage() {
                 <Typography fontWeight={600}>Data Retention</Typography>
               </Stack>
 
-              <Chip
-                label={`${settings.dataRetentionDays} days`}
-                sx={{ bgcolor: "rgba(255,255,255,0.04)", color: "text.secondary", border: "1px solid rgba(255,255,255,0.06)", fontWeight: 700 }}
-              />
+              <TextField
+                select
+                size="small"
+                value={settings.dataRetentionDays}
+                onChange={(event) => updateSettings({ dataRetentionDays: Number(event.target.value) })}
+                inputProps={{ "aria-label": "Data retention period" }}
+                sx={{ minWidth: 130, "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }}
+              >
+                {[7, 30, 90, 180, 365].map((days) => (
+                  <MenuItem key={days} value={days}>{days} days</MenuItem>
+                ))}
+              </TextField>
             </Stack>
           </Box>
         </Stack>
       </GlassSurface>
+
+      <Typography variant="caption" sx={{ display: "block", width: "100%", maxWidth: 760, mx: "auto", mt: 1.5, color: saved ? "#34d399" : "text.secondary", textAlign: "right" }}>
+        {saved ? "Settings saved" : "Settings are stored for this browser"}
+      </Typography>
 
       <GlassSurface sx={{ width: "100%", maxWidth: 760, mx: "auto", mt: 3, px: { xs: 2.5, md: 4 }, py: { xs: 2.5, md: 3 }, borderRadius: 4, background: "rgba(8, 14, 28, 0.68)", transition: "border-color 180ms ease, box-shadow 180ms ease", "&:hover": { borderColor: "#22d3ee", boxShadow: "0 0 0 2px rgba(34, 211, 238, 0.18)" } }}>
         <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>

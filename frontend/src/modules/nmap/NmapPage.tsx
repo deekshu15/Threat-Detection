@@ -32,9 +32,8 @@ type HostSnapshot = {
 
 type ScanPhase = "idle" | "starting" | "scanning" | "completed" | "failed" | "timedout";
 
-const SCAN_START_DELAY_MS = 250;
-const SCAN_WORK_DELAY_MS = 900;
 const SCAN_TIMEOUT_MS = 30000;
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "#ef4444",
@@ -65,31 +64,6 @@ const scanTypes: Array<{
   { id: "service", title: "Service Detect", description: "Version detection" },
 ];
 
-const commonServices: Array<{ port: number; service: string; protocol: "tcp" | "udp"; risk: PortFinding["risk"] }> = [
-  { port: 22, service: "ssh", protocol: "tcp", risk: "medium" },
-  { port: 53, service: "dns", protocol: "udp", risk: "low" },
-  { port: 80, service: "http", protocol: "tcp", risk: "medium" },
-  { port: 110, service: "pop3", protocol: "tcp", risk: "medium" },
-  { port: 139, service: "netbios-ssn", protocol: "tcp", risk: "high" },
-  { port: 143, service: "imap", protocol: "tcp", risk: "medium" },
-  { port: 443, service: "https", protocol: "tcp", risk: "low" },
-  { port: 445, service: "microsoft-ds", protocol: "tcp", risk: "high" },
-  { port: 3389, service: "rdp", protocol: "tcp", risk: "high" },
-  { port: 8080, service: "http-proxy", protocol: "tcp", risk: "medium" },
-  { port: 8443, service: "https-alt", protocol: "tcp", risk: "medium" },
-  { port: 9200, service: "elasticsearch", protocol: "tcp", risk: "high" },
-];
-
-function hashString(value: string) {
-  let hash = 0;
-
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) | 0;
-  }
-
-  return Math.abs(hash);
-}
-
 function isValidTarget(value: string) {
   const target = value.trim();
   if (!target) {
@@ -103,58 +77,6 @@ function isValidTarget(value: string) {
   return /^[a-zA-Z0-9.-]+$/.test(target) && !target.startsWith("-") && !target.endsWith("-");
 }
 
-function buildResolvedAddress(target: string) {
-  const seed = hashString(target);
-  const third = (seed % 254) + 1;
-  const fourth = ((seed >> 8) % 254) + 1;
-  return `10.${third}.${(seed >> 16) % 254}.${fourth}`;
-}
-
-function pickPorts(target: string, scanType: ScanType) {
-  const seed = hashString(`${target}-${scanType}`);
-  const threshold = scanType === "full" ? 10 : scanType === "service" ? 6 : scanType === "syn" ? 4 : 3;
-  const selected = commonServices.filter((_, index) => ((seed + index * 13) % 7) < threshold);
-
-  if (selected.length === 0) {
-    return [commonServices[0]];
-  }
-
-  return selected;
-}
-
-function buildFindings(target: string, scanType: ScanType) {
-  const ports = pickPorts(target, scanType);
-  return ports.map<PortFinding>((item) => ({
-    port: item.port,
-    protocol: item.protocol,
-    service: item.service,
-    state: item.risk === "low" ? "closed" : item.risk === "medium" ? "filtered" : "open",
-    risk: item.risk,
-  }));
-}
-
-function scoreScan(findings: PortFinding[]) {
-  return Math.min(findings.reduce((score, finding) => score + (finding.risk === "high" ? 22 : finding.risk === "medium" ? 10 : 4), 0), 100);
-}
-
-function getStatus(score: number, findings: PortFinding[]) {
-  if (findings.some((finding) => finding.risk === "high") || score >= 50) {
-    return "High exposure";
-  }
-
-  if (score >= 25) {
-    return "Review recommended";
-  }
-
-  return "Low exposure";
-}
-
-function getOsGuess(target: string) {
-  const seed = hashString(target);
-  const guesses = ["Linux 5.x", "Windows Server 2019", "Network appliance", "BSD-family host"];
-  return guesses[seed % guesses.length];
-}
-
 function NmapPage() {
   const [target, setTarget] = useState("192.168.1.0/24");
   const [scanType, setScanType] = useState<ScanType>("quick");
@@ -165,8 +87,6 @@ function NmapPage() {
 
   const scanPhaseRef = useRef<ScanPhase>("idle");
   const mountedRef = useRef(true);
-  const startTimerRef = useRef<number | null>(null);
-  const workTimerRef = useRef<number | null>(null);
   const timeoutTimerRef = useRef<number | null>(null);
   const elapsedTimerRef = useRef<number | null>(null);
 
@@ -175,12 +95,6 @@ function NmapPage() {
 
     return () => {
       mountedRef.current = false;
-      if (startTimerRef.current) {
-        window.clearTimeout(startTimerRef.current);
-      }
-      if (workTimerRef.current) {
-        window.clearTimeout(workTimerRef.current);
-      }
       if (timeoutTimerRef.current) {
         window.clearTimeout(timeoutTimerRef.current);
       }
@@ -196,14 +110,6 @@ function NmapPage() {
   };
 
   const clearTimers = () => {
-    if (startTimerRef.current) {
-      window.clearTimeout(startTimerRef.current);
-      startTimerRef.current = null;
-    }
-    if (workTimerRef.current) {
-      window.clearTimeout(workTimerRef.current);
-      workTimerRef.current = null;
-    }
     if (timeoutTimerRef.current) {
       window.clearTimeout(timeoutTimerRef.current);
       timeoutTimerRef.current = null;
@@ -214,7 +120,7 @@ function NmapPage() {
     }
   };
 
-  const startScan = () => {
+  const startScan = async () => {
     const currentPhase = scanPhaseRef.current;
     if (currentPhase === "starting" || currentPhase === "scanning") {
       return;
@@ -232,85 +138,77 @@ function NmapPage() {
     setElapsed(0);
     updateScanPhase("starting");
 
-    startTimerRef.current = window.setTimeout(() => {
-      if (!mountedRef.current || scanPhaseRef.current !== "starting") {
+    updateScanPhase("scanning");
+    elapsedTimerRef.current = window.setInterval(() => {
+      if (mountedRef.current) {
+        setElapsed((value) => value + 1);
+      }
+    }, 1000);
+
+    const controller = new AbortController();
+    timeoutTimerRef.current = window.setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/nmap/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: trimmedTarget, scan_type: scanType }),
+        signal: controller.signal,
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.detail || "Nmap scan failed.");
+      }
+
+      if (!mountedRef.current) {
         return;
       }
 
-      updateScanPhase("scanning");
+      setResult(payload as HostSnapshot);
+      updateScanPhase("completed");
 
-      elapsedTimerRef.current = window.setInterval(() => {
-        if (mountedRef.current) {
-          setElapsed((value) => value + 1);
-        }
-      }, 1000);
-
-      timeoutTimerRef.current = window.setTimeout(() => {
-        if (!mountedRef.current) {
-          return;
-        }
-        clearTimers();
-        updateScanPhase("timedout");
-        setErrorMessage("Nmap scan timed out. The scanner did not respond within the expected time.");
-      }, SCAN_TIMEOUT_MS);
-
-      workTimerRef.current = window.setTimeout(() => {
-        if (!mountedRef.current) {
-          return;
-        }
-
-        try {
-          const findings = buildFindings(trimmedTarget, scanType);
-          const score = scoreScan(findings);
-
-          setResult({
+      for (const finding of payload.findings as PortFinding[]) {
+        if (finding.state === "open" || finding.risk === "high") {
+          void saveSecurityEvent({
+            event_id: `nmap-${Date.now()}-${finding.port}`,
+            timestamp: new Date().toISOString(),
+            source: "Nmap",
+            tool: "Nmap",
             target: trimmedTarget,
-            resolvedTo: buildResolvedAddress(trimmedTarget),
-            osGuess: getOsGuess(trimmedTarget),
-            scanType,
-            findings,
-            score,
-            status: getStatus(score, findings),
-          });
-          updateScanPhase("completed");
-
-          for (const finding of findings) {
-            if (finding.state === "open" || finding.risk === "high") {
-              void saveSecurityEvent({
-                event_id: `nmap-${Date.now()}-${finding.port}`,
-                timestamp: new Date().toISOString(),
-                source: "Nmap",
-                tool: "Nmap",
-                target: trimmedTarget,
-                attack_type: "Port Exposure",
-                severity: finding.risk === "high" ? "High" : "Medium",
-                risk_score: finding.risk === "high" ? 78 : 45,
-                status: finding.state,
-                port: finding.port,
-                protocol: finding.protocol,
-                service: finding.service,
-                description: `${finding.service} is ${finding.state} on ${finding.port}/${finding.protocol}`,
-                recommendation: `Review whether ${finding.service} exposure is required and restrict access using appropriate network controls.`,
-              });
+            attack_type: "Port Exposure",
+            severity: finding.risk === "high" ? "High" : "Medium",
+            risk_score: finding.risk === "high" ? 78 : 45,
+            status: finding.state,
+            port: finding.port,
+            protocol: finding.protocol,
+            service: finding.service,
+            description: `${finding.service} is ${finding.state} on ${finding.port}/${finding.protocol}`,
+            recommendation: `Review whether ${finding.service} exposure is required and restrict access using appropriate network controls.`,
+          }).catch(() => {
+            if (mountedRef.current) {
+              setErrorMessage("Scan completed, but the finding could not be saved to analytics.");
             }
-          }
-        } catch {
-          clearTimers();
-          updateScanPhase("failed");
-          setErrorMessage("Nmap scan failed.");
-          return;
-        } finally {
-          if (elapsedTimerRef.current) {
-            window.clearInterval(elapsedTimerRef.current);
-            elapsedTimerRef.current = null;
-          }
-          if (timeoutTimerRef.current) {
-            window.clearTimeout(timeoutTimerRef.current);
-            timeoutTimerRef.current = null;
-          }
+          });
         }
-      }, SCAN_WORK_DELAY_MS);
-    }, SCAN_START_DELAY_MS);
+      }
+    } catch (error) {
+      if (!mountedRef.current) {
+        return;
+      }
+      updateScanPhase(error instanceof DOMException && error.name === "AbortError" ? "timedout" : "failed");
+      setErrorMessage(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "Nmap scan timed out."
+          : error instanceof TypeError
+            ? "Cannot reach the local API. Start uvicorn on port 8000 and try again."
+            : error instanceof Error
+              ? error.message
+              : "Nmap scan failed."
+      );
+    } finally {
+      clearTimers();
+    }
   };
 
   const retryScan = () => {

@@ -37,24 +37,10 @@ function LiveApiPage() {
   const [refreshInterval, setRefreshInterval] = useState(5);
   const [isStreaming, setIsStreaming] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [lastResponseStatus, setLastResponseStatus] = useState<number | null>(null);
   const [validationMessage, setValidationMessage] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("not_configured");
-
-  useEffect(() => {
-    if (!isStreaming) {
-      return undefined;
-    }
-
-    setLastRefreshAt(new Date());
-
-    const intervalId = window.setInterval(() => {
-      setLastRefreshAt(new Date());
-    }, refreshInterval * 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [isStreaming, refreshInterval]);
 
   const verifyConnection = async (): Promise<ConnectionStatus> => {
     const trimmedEndpoint = endpoint.trim();
@@ -85,6 +71,7 @@ function LiveApiPage() {
       });
 
       window.clearTimeout(timeoutId);
+      setLastResponseStatus(response.status);
 
       if (response.status === 401 || response.status === 403) {
         return "auth_failed";
@@ -99,6 +86,39 @@ function LiveApiPage() {
       return "connection_failed";
     }
   };
+
+  useEffect(() => {
+    if (!isStreaming) {
+      return undefined;
+    }
+
+    const refresh = async () => {
+      const status = await verifyConnection();
+      setConnectionStatus(status);
+
+      if (status === "connected") {
+        setLastRefreshAt(new Date());
+        setRefreshCount((count) => count + 1);
+        return;
+      }
+
+      setIsStreaming(false);
+      if (status === "auth_failed") {
+        setValidationMessage("Authentication failed. Check your API key.");
+      } else {
+        setValidationMessage("Connection failed. The endpoint could not be reached.");
+      }
+    };
+
+    void refresh();
+    const intervalId = window.setInterval(() => {
+      void refresh();
+    }, refreshInterval * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isStreaming, refreshInterval]);
 
   const handleToggleStream = async () => {
     if (isStreaming) {
@@ -384,7 +404,9 @@ function LiveApiPage() {
                 {statusLabel}
               </Typography>
               <Typography variant="caption" sx={{ display: "block", mt: 0.4, color: "text.secondary" }}>
-                {isStreaming ? `Streaming every ${refreshInterval} seconds. Last refresh at ${formatTime(lastRefreshAt)}.` : "Stream is idle until you start it."}
+                {isStreaming
+                  ? `Checked every ${refreshInterval} seconds. Last check at ${formatTime(lastRefreshAt)}. ${refreshCount} check${refreshCount === 1 ? "" : "s"} completed${lastResponseStatus ? ` (HTTP ${lastResponseStatus})` : ""}.`
+                  : "Stream is idle until you start it."}
               </Typography>
             </Box>
 

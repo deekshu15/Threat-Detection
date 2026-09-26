@@ -4,7 +4,6 @@ import { Box, Chip, Divider, Grid, Stack, Typography } from "@mui/material";
 
 import GlassSurface from "../../components/ui/GlassSurface";
 import PageHeader from "../../components/ui/PageHeader/PageHeader";
-import analyticsService from "../analytics/services/analyticsService";
 import { getSecurityEvents } from "./eventsService";
 
 type Severity = "critical" | "high" | "medium" | "low";
@@ -16,6 +15,7 @@ interface Recommendation {
   affectedTarget: string;
   tool: string;
   action: string;
+  occurrences: number;
 }
 
 function AiRecsPage() {
@@ -27,12 +27,9 @@ function AiRecsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [, events] = await Promise.all([
-        analyticsService.getAnalytics(),
-        getSecurityEvents(200),
-      ]);
+      const events = await getSecurityEvents(200);
 
-      const recs: Recommendation[] = [];
+      const grouped = new Map<string, Recommendation>();
 
       for (const event of events) {
         if (!event.attack_type || !event.tool) continue;
@@ -40,17 +37,22 @@ function AiRecsPage() {
         const severity: Severity = (event.severity?.toLowerCase() || "low") as Severity;
         if (!["critical", "high", "medium", "low"].includes(severity)) continue;
 
-        recs.push({
+        const recommendation: Recommendation = {
           severity,
           finding: event.attack_type,
           evidence: `${event.tool} discovered ${event.attack_type.toLowerCase()}${event.port ? ` on port ${event.port}` : ""}${event.target ? ` targeting ${event.target}` : ""}.`,
           affectedTarget: event.target || event.destination_ip || "Unknown",
           tool: event.tool,
           action: event.recommendation || `Investigate and remediate the ${event.attack_type.toLowerCase()} finding from ${event.tool}.`,
-        });
+          occurrences: 1,
+        };
+        const key = `${recommendation.finding}|${recommendation.tool}|${recommendation.affectedTarget}|${recommendation.action}`;
+        const existing = grouped.get(key);
+        grouped.set(key, existing ? { ...existing, occurrences: existing.occurrences + 1 } : recommendation);
       }
 
       const priority: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+      const recs = Array.from(grouped.values());
       recs.sort((a, b) => (priority[a.severity] ?? 3) - (priority[b.severity] ?? 3));
 
       setRecommendations(recs.slice(0, 20));
@@ -124,6 +126,7 @@ function AiRecsPage() {
                     }}
                   />
                   <Typography variant="caption" color="text.secondary">{rec.tool}</Typography>
+                  {rec.occurrences > 1 && <Chip size="small" label={`${rec.occurrences} occurrences`} variant="outlined" />}
                 </Stack>
 
                 <Typography variant="subtitle2" fontWeight={700} gutterBottom>

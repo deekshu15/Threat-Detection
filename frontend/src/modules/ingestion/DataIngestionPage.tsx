@@ -25,7 +25,17 @@ function DataIngestionPage() {
   const [notice, setNotice] = useState<UploadNotice | null>(null);
 
   const handleUpload = async (file: File) => {
-    console.log("Uploading...");
+    const extension = file.name.toLowerCase().split(".").pop();
+    if (!extension || !["csv", "json"].includes(extension)) {
+      setNotice({ severity: "error", message: "Choose a CSV or JSON file." });
+      return;
+    }
+
+    if (file.size === 0) {
+      setNotice({ severity: "error", message: "The selected file is empty." });
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
     setNotice(null);
@@ -56,8 +66,6 @@ function DataIngestionPage() {
       return;
     }
 
-    console.log("File selected");
-    console.log(file);
     setSelectedFile(file);
     void handleUpload(file);
   };

@@ -287,12 +287,12 @@ function LandingPage() {
                 </Typography>
               </Box>
 
-              <GlassSurface sx={{ position: "relative", zIndex: 1, maxWidth: 700, width: "100%", p: { xs: 2.2, md: 3 }, textAlign: "left" }}>
-                <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
+              <GlassSurface sx={{ position: "relative", zIndex: 1, maxWidth: 700, width: "100%", p: { xs: 2.2, md: 3 }, textAlign: "center" }}>
+                <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "center", gap: 2 }}>
                   <Typography sx={{ fontSize: { xs: 38, md: 52 }, lineHeight: 1, color: "primary.light", fontWeight: 800, mt: -0.15 }}>
                     “
                   </Typography>
-                  <Box>
+                  <Box sx={{ maxWidth: 560 }}>
                     <Typography
                       variant="h5"
                       sx={{
@@ -334,7 +334,7 @@ function LandingPage() {
           }}
         >
           <Container maxWidth="xl">
-            <Stack spacing={1.2} sx={{ mb: 3.5, maxWidth: 920 }}>
+            <Stack spacing={1.2} sx={{ mb: 3.5, maxWidth: 920, mx: "auto", alignItems: "center", textAlign: "center" }}>
               <Typography variant="overline" sx={{ color: "primary.light", fontWeight: 800, letterSpacing: "0.14em" }}>
                 FEATURES
               </Typography>
@@ -400,9 +400,8 @@ function LandingPage() {
               </Typography>
             </Stack>
 
-            <Grid container spacing={4} justifyContent="center">
-              <Grid size={{ xs: 12, lg: 8, xl: 7 }}>
-                <GlassSurface sx={{ p: { xs: 3, md: 4 }, height: "100%", maxWidth: 760, mx: "auto" }}>
+            <Box sx={{ width: "100%", maxWidth: 960, mx: "auto" }}>
+              <GlassSurface sx={{ p: { xs: 3, md: 4 }, width: "100%" }}>
                   <Stack spacing={2.2} sx={{ color: "text.secondary", lineHeight: 1.8, textAlign: "center", alignItems: "center" }}>
                     <Typography>
                       Northstar was built to remove the friction that slows modern teams down: fragmented telemetry, noisy alerts, and disconnected handoffs between analysts and leadership.
@@ -429,9 +428,8 @@ function LandingPage() {
                       </Grid>
                     ))}
                   </Grid>
-                </GlassSurface>
-              </Grid>
-            </Grid>
+              </GlassSurface>
+            </Box>
           </Container>
         </Box>
 

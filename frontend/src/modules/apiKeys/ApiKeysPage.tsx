@@ -3,8 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
-import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
-import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import PowerSettingsNewRoundedIcon from "@mui/icons-material/PowerSettingsNewRounded";
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, TextField, Typography } from "@mui/material";
 
@@ -14,9 +12,8 @@ type ApiKeyItem = {
   id: string;
   name: string;
   provider: string;
-  key: string;
+  masked_key: string;
   active: boolean;
-  visible: boolean;
 };
 
 type ApiKeyFormState = {
@@ -25,127 +22,73 @@ type ApiKeyFormState = {
   key: string;
 };
 
-const STORAGE_KEY = "dashboard-api-keys";
-
-const defaultKeys: ApiKeyItem[] = [
-  {
-    id: "alienvault",
-    name: "nn",
-    provider: "AlienVault OTX",
-    key: "mmmmmm",
-    active: false,
-    visible: true,
-  },
-  {
-    id: "virustotal",
-    name: "1st api key",
-    provider: "VirusTotal",
-    key: "1ed81f59••••••••••••••••••••••••••••••••••••••••01fe",
-    active: true,
-    visible: false,
-  },
-];
-
 const emptyForm: ApiKeyFormState = {
   name: "",
   provider: "",
   key: "",
 };
 
-function readApiKeys(): ApiKeyItem[] {
-  try {
-    const rawValue = window.localStorage.getItem(STORAGE_KEY);
-    if (!rawValue) {
-      return defaultKeys;
-    }
-
-    const parsed = JSON.parse(rawValue) as unknown;
-    if (!Array.isArray(parsed)) {
-      return defaultKeys;
-    }
-
-    return parsed
-      .map((item) => {
-        if (!item || typeof item !== "object") {
-          return null;
-        }
-
-        const candidate = item as Partial<ApiKeyItem>;
-
-        if (
-          typeof candidate.id !== "string" ||
-          typeof candidate.name !== "string" ||
-          typeof candidate.provider !== "string" ||
-          typeof candidate.key !== "string" ||
-          typeof candidate.active !== "boolean" ||
-          typeof candidate.visible !== "boolean"
-        ) {
-          return null;
-        }
-
-        return candidate as ApiKeyItem;
-      })
-      .filter((item): item is ApiKeyItem => item !== null);
-  } catch {
-    return defaultKeys;
-  }
-}
-
-function maskKey(value: string, visible: boolean) {
-  if (visible) {
-    return value;
-  }
-
-  if (value.length <= 12) {
-    return value;
-  }
-
-  return `${value.slice(0, 8)}••••••••••••••••••••••••${value.slice(-4)}`;
-}
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function ApiKeysPage() {
-  const [items, setItems] = useState<ApiKeyItem[]>(defaultKeys);
+  const [items, setItems] = useState<ApiKeyItem[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<ApiKeyFormState>(emptyForm);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    setItems(readApiKeys());
+    fetch(`${API_BASE}/api/keys`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to load API keys.");
+        return response.json() as Promise<{ keys: ApiKeyItem[] }>;
+      })
+      .then((data) => setItems(data.keys))
+      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load API keys."));
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, [items]);
 
   const activeCount = useMemo(() => items.filter((item) => item.active).length, [items]);
 
-  const handleAddKey = () => {
+  const handleAddKey = async () => {
     if (!form.name.trim() || !form.provider.trim() || !form.key.trim()) {
       return;
     }
 
-    const nextItem: ApiKeyItem = {
-      id: `${form.provider.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
-      name: form.name.trim(),
-      provider: form.provider.trim(),
-      key: form.key.trim(),
-      active: true,
-      visible: false,
-    };
-
-    setItems((current) => [nextItem, ...current]);
-    setForm(emptyForm);
-    setDialogOpen(false);
+    try {
+      const response = await fetch(`${API_BASE}/api/keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!response.ok) throw new Error("Unable to save API key.");
+      const nextItem = (await response.json()) as ApiKeyItem;
+      setItems((current) => [nextItem, ...current]);
+      setForm(emptyForm);
+      setDialogOpen(false);
+    } catch (addError) {
+      setError(addError instanceof Error ? addError.message : "Unable to save API key.");
+    }
   };
 
-  const toggleVisibility = (id: string) => {
-    setItems((current) => current.map((item) => (item.id === id ? { ...item, visible: !item.visible } : item)));
+  const toggleActive = async (item: ApiKeyItem) => {
+    const response = await fetch(`${API_BASE}/api/keys/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: !item.active }),
+    });
+    if (!response.ok) {
+      setError("Unable to update API key.");
+      return;
+    }
+    const updated = (await response.json()) as ApiKeyItem;
+    setItems((current) => current.map((currentItem) => (currentItem.id === updated.id ? updated : currentItem)));
   };
 
-  const toggleActive = (id: string) => {
-    setItems((current) => current.map((item) => (item.id === id ? { ...item, active: !item.active } : item)));
-  };
-
-  const removeKey = (id: string) => {
+  const removeKey = async (id: string) => {
+    const response = await fetch(`${API_BASE}/api/keys/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      setError("Unable to revoke API key.");
+      return;
+    }
     setItems((current) => current.filter((item) => item.id !== id));
   };
 
@@ -208,6 +151,12 @@ function ApiKeysPage() {
           </Button>
         </Stack>
 
+        {error && (
+          <Typography sx={{ mt: 2, color: "#fca5a5" }}>
+            {error}
+          </Typography>
+        )}
+
         <Stack spacing={1.6}>
           {items.map((item) => (
             <GlassSurface
@@ -265,32 +214,14 @@ function ApiKeysPage() {
                         wordBreak: "break-all",
                       }}
                     >
-                      {maskKey(item.key, item.visible)}
+                      {item.masked_key}
                     </Typography>
                   </Box>
                 </Stack>
 
                 <Stack direction="row" spacing={1} alignItems="center" flexShrink={0}>
                   <IconButton
-                    onClick={() => toggleVisibility(item.id)}
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 3,
-                      color: item.visible ? "#22d3ee" : "#cbd5e1",
-                      bgcolor: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.05)",
-                      "&:hover": {
-                        bgcolor: "rgba(255,255,255,0.06)",
-                      },
-                    }}
-                    aria-label={item.visible ? "Hide API key" : "Show API key"}
-                  >
-                    {item.visible ? <VisibilityOffRoundedIcon fontSize="small" /> : <VisibilityRoundedIcon fontSize="small" />}
-                  </IconButton>
-
-                  <IconButton
-                    onClick={() => toggleActive(item.id)}
+                    onClick={() => void toggleActive(item)}
                     sx={{
                       width: 40,
                       height: 40,

@@ -11,11 +11,18 @@ for frontend integration before real AWS deployment happens.
 """
 
 import json
+import ipaddress
+import hashlib
+import secrets
+import socket
+import subprocess
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 import time
 import logging
+import xml.etree.ElementTree as ET
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -69,6 +76,21 @@ class ThreatAnalysisRequest(BaseModel):
 
     src_port: int
     dest_port: int
+
+
+class NmapScanRequest(BaseModel):
+    target: str
+    scan_type: str = "quick"
+
+
+class ApiKeyCreateRequest(BaseModel):
+    name: str
+    provider: str
+    key: str
+
+
+class ApiKeyStateRequest(BaseModel):
+    active: bool
 
 # ------------------------------------------------------------------
 # Make the real backend code importable
@@ -179,6 +201,206 @@ def get_latest_cves(limit: int = 10):
 def health_check():
     """Quick check that the API is running - visit http://localhost:8000/health in a browser."""
     return {"status": "ok"}
+
+
+API_KEYS_FILE = Path(__file__).resolve().parent.parent / "datasets" / "processed" / "api_keys.json"
+
+
+def _load_api_keys() -> list[dict]:
+    if not API_KEYS_FILE.exists():
+        return []
+    try:
+        return json.loads(API_KEYS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_api_keys(keys: list[dict]) -> None:
+    API_KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    API_KEYS_FILE.write_text(json.dumps(keys, indent=2), encoding="utf-8")
+
+
+def _mask_api_key(value: str) -> str:
+    if len(value) <= 8:
+        return "••••••••"
+    return f"{value[:4]}••••••••••••{value[-4:]}"
+
+
+@app.get("/api/keys")
+def list_api_keys():
+    return {"keys": [{key: item[key] for key in ("id", "name", "provider", "masked_key", "active", "created_at")} for item in _load_api_keys()]}
+
+
+@app.post("/api/keys")
+def create_api_key(request: ApiKeyCreateRequest):
+    name = request.name.strip()
+    provider = request.provider.strip()
+    raw_key = request.key.strip()
+    if not name or not provider or not raw_key:
+        raise HTTPException(status_code=400, detail="Name, provider, and API key are required.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    item = {
+        "id": secrets.token_urlsafe(12),
+        "name": name,
+        "provider": provider,
+        "key_hash": hashlib.sha256(raw_key.encode("utf-8")).hexdigest(),
+        "masked_key": _mask_api_key(raw_key),
+        "active": True,
+        "created_at": now,
+    }
+    keys = _load_api_keys()
+    keys.insert(0, item)
+    _save_api_keys(keys)
+    return {key: item[key] for key in ("id", "name", "provider", "masked_key", "active", "created_at")}
+
+
+@app.patch("/api/keys/{key_id}")
+def update_api_key(key_id: str, request: ApiKeyStateRequest):
+    keys = _load_api_keys()
+    for item in keys:
+        if item.get("id") == key_id:
+            item["active"] = request.active
+            _save_api_keys(keys)
+            return {key: item[key] for key in ("id", "name", "provider", "masked_key", "active", "created_at")}
+    raise HTTPException(status_code=404, detail="API key not found.")
+
+
+@app.delete("/api/keys/{key_id}")
+def delete_api_key(key_id: str):
+    keys = _load_api_keys()
+    remaining = [item for item in keys if item.get("id") != key_id]
+    if len(remaining) == len(keys):
+        raise HTTPException(status_code=404, detail="API key not found.")
+    _save_api_keys(remaining)
+    return {"success": True}
+
+
+def _resolve_private_target(target: str) -> tuple[str, str]:
+    cleaned = target.strip()
+    if not cleaned or cleaned.startswith("-") or any(character.isspace() for character in cleaned):
+        raise HTTPException(status_code=400, detail="Enter a valid private IP, CIDR block, localhost, or hostname.")
+
+    try:
+        network = ipaddress.ip_network(cleaned, strict=False)
+        addresses = [network.network_address]
+    except ValueError:
+        try:
+            addresses = [ipaddress.ip_address(cleaned)]
+        except ValueError:
+            try:
+                resolved = socket.gethostbyname(cleaned)
+                addresses = [ipaddress.ip_address(resolved)]
+            except socket.gaierror as exc:
+                raise HTTPException(status_code=400, detail="Target could not be resolved.") from exc
+
+    if not all(address.is_private or address.is_loopback or address.is_link_local for address in addresses):
+        raise HTTPException(status_code=403, detail="Only loopback or private network targets are allowed.")
+
+    resolved_address = str(addresses[0])
+    return cleaned, resolved_address
+
+
+def _risk_for_service(port: int, service: str, state: str) -> str:
+    if state != "open":
+        return "low" if state == "closed" else "medium"
+    if port in {21, 23, 139, 445, 3389, 9200}:
+        return "high"
+    if port in {22, 25, 80, 110, 143, 8080, 8443}:
+        return "medium"
+    return "low"
+
+
+def _parse_nmap_xml(xml_output: str, target: str, resolved_address: str, scan_type: str) -> dict:
+    root = ET.fromstring(xml_output)
+    host = root.find("host")
+    if host is None:
+        return {
+            "target": target,
+            "resolvedTo": resolved_address,
+            "osGuess": "Unknown",
+            "scanType": scan_type,
+            "findings": [],
+            "score": 0,
+            "status": "Low exposure",
+        }
+
+    address_node = host.find("address[@addrtype='ipv4']")
+    if address_node is None:
+        address_node = host.find("address")
+    actual_address = address_node.get("addr", resolved_address) if address_node is not None else resolved_address
+    findings = []
+    for port_node in host.findall("ports/port"):
+        state_node = port_node.find("state")
+        if state_node is None:
+            continue
+        state = state_node.get("state", "unknown")
+        service_node = port_node.find("service")
+        service = service_node.get("name", "unknown") if service_node is not None else "unknown"
+        port = int(port_node.get("portid", "0"))
+        protocol = port_node.get("protocol", "tcp")
+        findings.append({
+            "port": port,
+            "protocol": protocol,
+            "service": service,
+            "state": state,
+            "risk": _risk_for_service(port, service, state),
+        })
+
+    score = min(sum(22 if item["risk"] == "high" else 10 if item["risk"] == "medium" else 4 for item in findings), 100)
+    status = "High exposure" if any(item["risk"] == "high" for item in findings) or score >= 50 else "Review recommended" if score >= 25 else "Low exposure"
+    os_node = host.find("os/osmatch")
+    os_guess = os_node.get("name", "Unknown") if os_node is not None else "Unknown"
+    return {
+        "target": target,
+        "resolvedTo": actual_address,
+        "osGuess": os_guess,
+        "scanType": scan_type,
+        "findings": findings,
+        "score": score,
+        "status": status,
+    }
+
+
+@app.post("/api/nmap/scan")
+def nmap_scan(request: NmapScanRequest):
+    allowed_scan_types = {"quick", "full", "syn", "service"}
+    if request.scan_type not in allowed_scan_types:
+        raise HTTPException(status_code=400, detail="Unsupported scan type.")
+
+    target, resolved_address = _resolve_private_target(request.target)
+    nmap_executable = shutil.which("nmap")
+    if nmap_executable is None:
+        standard_windows_path = Path(r"C:\Program Files (x86)\Nmap\nmap.exe")
+        if standard_windows_path.exists():
+            nmap_executable = str(standard_windows_path)
+
+    if nmap_executable is None:
+        raise HTTPException(status_code=503, detail="Nmap is not installed or is not available on the backend PATH.")
+
+    command = [nmap_executable, "-T3", "-oX", "-"]
+    if request.scan_type == "quick":
+        command.append("-F")
+    elif request.scan_type == "full":
+        command.append("-p-")
+    elif request.scan_type == "syn":
+        command.extend(["-sS", "-F"])
+    else:
+        command.extend(["-sV", "-F"])
+    command.append(target)
+
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="Nmap scan timed out.") from exc
+
+    if completed.returncode != 0:
+        raise HTTPException(status_code=502, detail=completed.stderr.strip() or "Nmap scan failed.")
+
+    try:
+        return _parse_nmap_xml(completed.stdout, target, resolved_address, request.scan_type)
+    except ET.ParseError as exc:
+        raise HTTPException(status_code=502, detail="Nmap returned invalid XML output.") from exc
 
 # ------------------------------------------------------------------
 # SIEM Monitoring: real normalized Windows + IDS event data

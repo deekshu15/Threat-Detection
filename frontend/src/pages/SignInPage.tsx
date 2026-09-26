@@ -42,45 +42,51 @@ function SignInPage() {
       <Paper
         elevation={0}
         sx={{
-          p: 5,
+          p: { xs: 3, sm: 4.5 },
           width: "100%",
-          maxWidth: 420,
+          maxWidth: 480,
           borderRadius: 4,
           border: "1px solid rgba(255,255,255,0.12)",
           bgcolor: "rgba(255,255,255,0.05)",
           backdropFilter: "blur(16px)",
         }}
       >
-        <Stack spacing={1} alignItems="center" mb={4}>
+        <Stack spacing={1.2} alignItems="center" mb={{ xs: 3, sm: 3.5 }}>
           <ShieldRoundedIcon color="primary" sx={{ fontSize: 36 }} />
-          <Typography variant="h5" fontWeight={800} color="white">
+          <Typography variant="h5" fontWeight={800} color="white" textAlign="center">
             Sign in to Northstar
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" textAlign="center">
             Welcome back. Enter your credentials to continue.
           </Typography>
         </Stack>
 
-        <form onSubmit={handleSubmit}>
-          <Stack spacing={2.5}>
+        <form onSubmit={handleSubmit} style={{ display: "block", marginTop: 20 }}>
+          <Stack spacing={{ xs: 2.25, sm: 2.75 }}>
             {error && <Alert severity="error">{error}</Alert>}
 
             <TextField
               label="Email"
               type="email"
+              name="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               fullWidth
+              InputLabelProps={{ shrink: true }}
             />
 
             <TextField
               label="Password"
               type="password"
+              name="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               fullWidth
+              InputLabelProps={{ shrink: true }}
             />
 
             <Button type="submit" variant="contained" size="large" disabled={loading} fullWidth>
