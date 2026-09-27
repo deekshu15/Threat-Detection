@@ -15,6 +15,7 @@ import ipaddress
 import hashlib
 import secrets
 import socket
+import os
 import subprocess
 import shutil
 import sys
@@ -81,6 +82,23 @@ class ThreatAnalysisRequest(BaseModel):
 class NmapScanRequest(BaseModel):
     target: str
     scan_type: str = "quick"
+
+
+class OpenVasScanRequest(BaseModel):
+    target: str
+    profile: str = "Full and fast"
+    port: str = "22,80,443"
+
+
+class NiktoScanRequest(BaseModel):
+    target: str
+    port: str = "80,443"
+    user_agent: str = "Mozilla/5.0 (Nikto Dashboard)"
+
+
+class ToolCheckRequest(BaseModel):
+    tool: str
+    target: str = ""
 
 
 class ApiKeyCreateRequest(BaseModel):
@@ -401,6 +419,198 @@ def nmap_scan(request: NmapScanRequest):
         return _parse_nmap_xml(completed.stdout, target, resolved_address, request.scan_type)
     except ET.ParseError as exc:
         raise HTTPException(status_code=502, detail="Nmap returned invalid XML output.") from exc
+
+
+@app.post("/api/nikto/scan")
+def nikto_scan(request: NiktoScanRequest):
+    target = request.target.strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Nikto target is required.")
+
+    nikto_executable = os.getenv("NIKTO_PATH") or shutil.which("nikto") or shutil.which("nikto.pl")
+    if nikto_executable is None:
+        raise HTTPException(status_code=503, detail="Nikto is not installed or is not available on the backend PATH.")
+
+    if nikto_executable.lower().endswith(".pl"):
+        perl_executable = shutil.which("perl")
+        if perl_executable is None:
+            raise HTTPException(status_code=503, detail="Perl is required to run the Nikto .pl script.")
+        command = [perl_executable, nikto_executable]
+    else:
+        command = [nikto_executable]
+
+    command.extend([
+        "-h",
+        target,
+        "-p",
+        request.port,
+        "-useragent",
+        request.user_agent,
+        "-nointeractive",
+    ])
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=300, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="Nikto scan timed out after five minutes.") from exc
+
+    output = (completed.stdout or "") + (f"\n{completed.stderr}" if completed.stderr else "")
+    if completed.returncode != 0:
+        raise HTTPException(status_code=502, detail=output.strip() or "Nikto scan failed.")
+
+    return {
+        "success": True,
+        "target": target,
+        "ports": request.port,
+        "output": output.strip(),
+    }
+
+
+@app.post("/api/tools/check")
+def check_security_tool(request: ToolCheckRequest):
+    tool_commands = {
+        "Metasploit Framework": ("msfconsole", ["--version"]),
+        "SQLmap": ("sqlmap", ["--version"]),
+        "John the Ripper": ("john", ["--version"]),
+    }
+    tool = request.tool.strip()
+    if tool not in tool_commands:
+        raise HTTPException(status_code=400, detail="Unsupported penetration-testing tool.")
+
+    executable_name, arguments = tool_commands[tool]
+    executable = shutil.which(executable_name)
+    if executable is None:
+        raise HTTPException(status_code=503, detail=f"{tool} is not installed or is not available on the backend PATH.")
+
+    try:
+        completed = subprocess.run(
+            [executable, *arguments],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail=f"{tool} did not respond within 30 seconds.") from exc
+
+    output = (completed.stdout or completed.stderr).strip()
+    if completed.returncode != 0:
+        raise HTTPException(status_code=502, detail=output or f"{tool} could not be executed.")
+
+    return {
+        "success": True,
+        "tool": tool,
+        "target": request.target.strip(),
+        "version": output.splitlines()[0] if output else "Available",
+    }
+
+
+def _run_openvas_xml(xml_request: str) -> ET.Element:
+    cli = shutil.which("gvm-cli")
+    username = os.getenv("OPENVAS_USERNAME")
+    password = os.getenv("OPENVAS_PASSWORD")
+    connection = os.getenv("OPENVAS_CONNECTION", "socket").lower()
+    socket_path = os.getenv("OPENVAS_SOCKET", "/run/gvmd/gvmd.sock")
+
+    if cli is None:
+        raise HTTPException(status_code=503, detail="gvm-cli is not installed or is not available on the backend PATH.")
+    if not username or not password:
+        raise HTTPException(status_code=503, detail="OPENVAS_USERNAME and OPENVAS_PASSWORD must be configured on the backend.")
+
+    command = [
+        cli,
+        "--gmp-username",
+        username,
+        "--gmp-password",
+        password,
+    ]
+    if connection == "tls":
+        command.extend([
+            "tls",
+            "--hostname",
+            os.getenv("OPENVAS_HOST", "127.0.0.1"),
+            "--port",
+            os.getenv("OPENVAS_PORT", "9390"),
+        ])
+        if os.getenv("OPENVAS_SKIP_TLS_VERIFY", "false").lower() == "true":
+            command.append("--skip-ssl-verification")
+    else:
+        command.extend(["socket", "--socketpath", socket_path])
+    command.extend(["--xml", xml_request])
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="OpenVAS request timed out.") from exc
+
+    if completed.returncode != 0:
+        raise HTTPException(status_code=502, detail=completed.stderr.strip() or "OpenVAS request failed.")
+
+    try:
+        response = ET.fromstring(completed.stdout)
+    except ET.ParseError as exc:
+        raise HTTPException(status_code=502, detail="OpenVAS returned invalid XML.") from exc
+
+    status = response.get("status", "")
+    if status and not status.startswith("2"):
+        raise HTTPException(status_code=502, detail=response.get("status_text", "OpenVAS rejected the request."))
+    return response
+
+
+def _openvas_resource_id(response: ET.Element, tag: str, name: str) -> str | None:
+    requested_name = name.strip().lower()
+    resources = response.findall(f".//{tag}")
+    for resource in resources:
+        if resource.get("name", "").strip().lower() == requested_name:
+            return resource.get("id")
+    return resources[0].get("id") if resources else None
+
+
+@app.post("/api/openvas/scan")
+def openvas_scan(request: OpenVasScanRequest):
+    target = request.target.strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="OpenVAS target is required.")
+
+    configs = _run_openvas_xml("<get_configs/>" )
+    config_id = _openvas_resource_id(configs, "config", request.profile)
+    if not config_id:
+        raise HTTPException(status_code=502, detail=f"OpenVAS scan profile '{request.profile}' was not found.")
+
+    port_list_id = os.getenv("OPENVAS_PORT_LIST_ID")
+    if not port_list_id:
+        port_lists = _run_openvas_xml("<get_port_lists/>" )
+        port_list_id = _openvas_resource_id(port_lists, "port_list", "All IANA assigned TCP")
+    if not port_list_id:
+        raise HTTPException(status_code=502, detail="No OpenVAS port list is available. Set OPENVAS_PORT_LIST_ID.")
+
+    target_request = ET.Element("create_target")
+    ET.SubElement(target_request, "name").text = f"Threat Dashboard - {target}"
+    ET.SubElement(target_request, "hosts").text = target
+    ET.SubElement(target_request, "port_list", {"id": port_list_id})
+    target_response = _run_openvas_xml(ET.tostring(target_request, encoding="unicode"))
+    target_id = target_response.get("id")
+    if not target_id:
+        raise HTTPException(status_code=502, detail="OpenVAS did not return a target ID.")
+
+    task_request = ET.Element("create_task")
+    ET.SubElement(task_request, "name").text = f"Threat Dashboard - {target}"
+    ET.SubElement(task_request, "config", {"id": config_id})
+    ET.SubElement(task_request, "target", {"id": target_id})
+    task_response = _run_openvas_xml(ET.tostring(task_request, encoding="unicode"))
+    task_id = task_response.get("id")
+    if not task_id:
+        raise HTTPException(status_code=502, detail="OpenVAS did not return a task ID.")
+
+    start_response = _run_openvas_xml(f'<start_task task_id="{task_id}"/>')
+    report_id = start_response.findtext("report_id")
+    return {
+        "success": True,
+        "status": "started",
+        "target": target,
+        "profile": request.profile,
+        "ports": request.port,
+        "task_id": task_id,
+        "report_id": report_id,
+    }
 
 # ------------------------------------------------------------------
 # SIEM Monitoring: real normalized Windows + IDS event data

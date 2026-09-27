@@ -19,6 +19,7 @@ type ScanState = "disconnected" | "connected" | "scanning";
 
 const STORAGE_KEY = "dashboard-openvas-config";
 const DOCS_URL = "https://openvas.org/";
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 const defaultConfig: OpenVasConfig = {
   target: "10.0.0.0/24",
@@ -62,34 +63,39 @@ function OpenVasPage() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   }, [config]);
 
-  useEffect(() => {
-    if (scanState !== "scanning") {
-      return undefined;
-    }
-
-    setScanMessage(`Scanning ${config.target} with ${config.profile}...`);
-    const timer = window.setTimeout(() => {
-      setScanState("connected");
-      setScanMessage(`Scan completed for ${config.target}. No critical issues were found in the simulated run.`);
-    }, 2200);
-
-    return () => window.clearTimeout(timer);
-  }, [config.profile, config.target, scanState]);
-
   const statusLabel = useMemo(() => {
     if (scanState === "scanning") {
       return "Scanning";
     }
 
     if (scanState === "connected") {
-      return "Simulation Mode";
+      return "Connected";
     }
 
     return "Not Configured";
   }, [scanState]);
 
-  const handleRunScan = () => {
+  const handleRunScan = async () => {
     setScanState("scanning");
+    setScanMessage(`Starting OpenVAS scan for ${config.target}...`);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/openvas/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || "OpenVAS scan could not be started.");
+      }
+
+      setScanState("connected");
+      setScanMessage(`OpenVAS scan started for ${config.target}. Task ID: ${payload.task_id}.`);
+    } catch (error) {
+      setScanState("disconnected");
+      setScanMessage(error instanceof Error ? error.message : "OpenVAS scan could not be started.");
+    }
   };
 
   const handleConfigure = () => {
@@ -100,8 +106,7 @@ function OpenVasPage() {
   const handleSaveConfig = () => {
     setConfig(draft);
     setConfigOpen(false);
-    setScanState("connected");
-    setScanMessage(`Configuration saved for ${draft.target}. The scanner is ready.`);
+    setScanMessage(`Configuration saved for ${draft.target}. OpenVAS is ready to scan.`);
   };
 
   const handleOpenDocs = () => {

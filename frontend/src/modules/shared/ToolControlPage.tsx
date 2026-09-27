@@ -9,6 +9,8 @@ import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, 
 
 import GlassSurface from "../../components/ui/GlassSurface";
 
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
 type ToolControlPageProps = {
   title: string;
   description: string;
@@ -27,24 +29,39 @@ function ToolControlPage({ title, description, category, docsUrl, ready = false 
   const status = isRunning ? "Running" : isConfigured ? "Ready" : "Not Connected";
   const isReady = isConfigured || isRunning;
 
-  const handleRun = () => {
+  const handleRun = async () => {
     if (!isConfigured) {
-      setMessage("Configure this tool before starting a simulated run.");
+      setMessage("Configure this tool before checking its connection.");
       return;
     }
 
     setIsRunning(true);
-    setMessage(`Simulated run started${target ? ` for ${target}` : ""}.`);
-    window.setTimeout(() => {
+    setMessage(`Checking ${title}${target ? ` for ${target}` : ""}...`);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/tools/check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tool: title, target }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || `${title} could not be checked.`);
+      }
+
+      setMessage(`${title} is available. ${payload.version}`);
+    } catch (error) {
+      setIsConfigured(false);
+      setMessage(error instanceof Error ? error.message : `${title} could not be checked.`);
+    } finally {
       setIsRunning(false);
-      setMessage("Simulated run completed. No live tool was executed.");
-    }, 1800);
+    }
   };
 
   const saveConfiguration = () => {
     setIsConfigured(true);
     setConfigureOpen(false);
-    setMessage("Configuration saved. The tool is ready for a simulated run.");
+    setMessage("Configuration saved. Run a connection check to verify the local tool.");
   };
 
   return (

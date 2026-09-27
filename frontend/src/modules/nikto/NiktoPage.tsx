@@ -18,6 +18,7 @@ type ScanState = "disconnected" | "connected" | "scanning";
 
 const STORAGE_KEY = "dashboard-nikto-config";
 const DOCS_URL = "https://github.com/sullo/nikto";
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 const defaultConfig: NiktoConfig = {
   target: "https://example.com",
@@ -61,34 +62,43 @@ function NiktoPage() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   }, [config]);
 
-  useEffect(() => {
-    if (scanState !== "scanning") {
-      return undefined;
-    }
-
-    setScanMessage(`Scanning ${config.target} on ports ${config.port}...`);
-    const timer = window.setTimeout(() => {
-      setScanState("connected");
-      setScanMessage(`Nikto scan completed for ${config.target}. No critical issues were found in this simulated run.`);
-    }, 2200);
-
-    return () => window.clearTimeout(timer);
-  }, [config.port, config.target, scanState]);
-
   const statusLabel = useMemo(() => {
     if (scanState === "scanning") {
       return "Scanning";
     }
 
     if (scanState === "connected") {
-      return "Simulation Mode";
+      return "Connected";
     }
 
     return "Not Configured";
   }, [scanState]);
 
-  const handleRunScan = () => {
+  const handleRunScan = async () => {
     setScanState("scanning");
+    setScanMessage(`Starting Nikto scan for ${config.target}...`);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/nikto/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: config.target,
+          port: config.port,
+          user_agent: config.userAgent,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || "Nikto scan could not be started.");
+      }
+
+      setScanState("connected");
+      setScanMessage(`Nikto scan completed for ${config.target}. ${payload.output?.split("\n")[0] || "Results received from the backend."}`);
+    } catch (error) {
+      setScanState("disconnected");
+      setScanMessage(error instanceof Error ? error.message : "Nikto scan could not be started.");
+    }
   };
 
   const handleOpenDocs = () => {
@@ -103,8 +113,7 @@ function NiktoPage() {
   const handleSaveConfig = () => {
     setConfig(draft);
     setConfigOpen(false);
-    setScanState("connected");
-    setScanMessage(`Configuration saved for ${draft.target}. Nikto is ready.`);
+    setScanMessage(`Configuration saved for ${draft.target}. Nikto is ready to scan.`);
   };
 
   return (

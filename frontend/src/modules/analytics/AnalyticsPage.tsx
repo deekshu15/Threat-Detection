@@ -75,6 +75,12 @@ function AnalyticsPage() {
 
   useEffect(() => {
     loadAnalytics();
+
+    const refreshTimer = window.setInterval(() => {
+      loadAnalytics();
+    }, 30_000);
+
+    return () => window.clearInterval(refreshTimer);
   }, []);
 
   const exportReport = () => {
